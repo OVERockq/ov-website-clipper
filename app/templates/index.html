@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>웹페이지 변환기</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .help-text {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+        .progress {
+            height: 25px;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            line-height: 25px;
+        }
+        .download-section {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px dashed #dee2e6;
+            border-radius: 5px;
+        }
+        .download-btn {
+            margin-top: 10px;
+        }
+        .status-text {
+            margin: 10px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">웹페이지 변환기</h1>
+        
+        <form id="convertForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="url">웹페이지 URL</label>
+                <input type="url" class="form-control" id="url" name="url" required>
+                <div class="help-text">변환할 웹페이지의 URL을 입력하세요.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="title">문서 제목</label>
+                <input type="text" class="form-control" id="title" name="title" required>
+                <div class="help-text">생성될 문서의 제목을 입력하세요.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="content_selector">본문 선택자</label>
+                <input type="text" class="form-control" id="content_selector" name="content_selector" required>
+                <div class="help-text">본문 내용을 포함하는 요소의 CSS 선택자 또는 XPath를 입력하세요. (예: main, #content, //div[@class='content'])</div>
+            </div>
+
+            <div class="form-group">
+                <label for="menu_selector">메뉴 선택자 (선택사항)</label>
+                <input type="text" class="form-control" id="menu_selector" name="menu_selector">
+                <div class="help-text">추가 페이지를 수집할 메뉴 요소의 CSS 선택자 또는 XPath를 입력하세요. (예: nav, .menu, //ul[@class='navigation'])</div>
+            </div>
+
+            <div class="form-group">
+                <label for="txt_file">텍스트 파일 (선택사항)</label>
+                <input type="file" class="form-control" id="txt_file" name="txt_file" accept=".txt">
+                <div class="help-text">각 페이지를 빈 줄로 구분한 텍스트 파일을 업로드하세요.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="output_format">출력 형식</label>
+                <select class="form-control" id="output_format" name="output_format" required>
+                    <option value="epub">EPUB</option>
+                    <option value="markdown">Markdown</option>
+                    <option value="doc">Word 문서</option>
+                    <option value="pdf">PDF</option>
+                </select>
+                <div class="help-text">변환할 문서 형식을 선택하세요.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="merge_pages">페이지 병합</label>
+                <select class="form-control" id="merge_pages" name="merge_pages">
+                    <option value="true">모든 페이지를 하나의 문서로 병합</option>
+                    <option value="false">각 페이지를 개별 문서로 생성</option>
+                </select>
+                <div class="help-text">여러 페이지를 하나의 문서로 병합할지 선택하세요.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="translator_type">번역 옵션</label>
+                <select class="form-control" id="translator_type" name="translator_type" required>
+                    <option value="none" selected>번역하지 않음</option>
+                </select>
+                <div class="help-text">사용할 번역 방식을 선택하세요. (API 키가 없으면 외부 번역 옵션이 표시되지 않습니다)</div>
+            </div>
+            <div class="form-group">
+                <label for="target_lang">번역 언어</label>
+                <select class="form-control" id="target_lang" name="target_lang" disabled>
+                    <option value="ko">한국어</option>
+                    <option value="en">영어</option>
+                    <option value="ja">일본어</option>
+                    <option value="zh">중국어</option>
+                </select>
+                <div class="help-text">번역할 언어를 선택하세요.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="font_family">글꼴 선택</label>
+                <select class="form-control" id="font_family" name="font_family">
+                    <option value="Noto Sans KR" selected>Noto Sans KR</option>
+                    <option value="Nanum Gothic">나눔고딕</option>
+                    <option value="Malgun Gothic">맑은고딕</option>
+                    <option value="Apple SD Gothic Neo">Apple SD 고딕 Neo</option>
+                    <option value="Gothic A1">Gothic A1</option>
+                    <option value="Spoqa Han Sans Neo">스포카 한 산스 Neo</option>
+                    <option value="Pretendard">프리텐다드</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Fira Mono">Fira Mono</option>
+                    <option value="D2Coding">D2Coding</option>
+                </select>
+                <div class="help-text">웹 UI와 변환 결과물에 적용할 글꼴을 선택하세요.</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">변환하기</button>
+        </form>
+
+        <div class="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="status-text">변환 중입니다. 잠시만 기다려주세요...</p>
+            <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div>
+            </div>
+            <p class="page-status">처리된 페이지: 0/0</p>
+        </div>
+
+        <div class="download-section">
+            <h4>변환이 완료되었습니다!</h4>
+            <p>아래 버튼을 클릭하여 변환된 파일을 다운로드하세요.</p>
+            <button class="btn btn-success download-btn" onclick="downloadFile()">다운로드</button>
+        </div>
+    </div>
+
+    <script>
+        let downloadUrl = null;
+        let downloadFileName = null;
+
+        document.getElementById('convertForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const form = e.target;
+            const loading = document.querySelector('.loading');
+            const downloadSection = document.querySelector('.download-section');
+            const submitButton = form.querySelector('button[type="submit"]');
+            const progressBar = document.querySelector('.progress-bar');
+            const pageStatus = document.querySelector('.page-status');
+            
+            // UI 초기화
+            loading.style.display = 'block';
+            downloadSection.style.display = 'none';
+            submitButton.disabled = true;
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            pageStatus.textContent = '처리된 페이지: 0/0';
+            
+            try {
+                const formData = new FormData(form);
+                const response = await fetch('/convert', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    downloadUrl = window.URL.createObjectURL(blob);
+                    
+                    // 파일 확장자 설정
+                    const format = formData.get('output_format');
+                    const extension = format === 'markdown' && formData.get('menu_selector') ? 'zip' : format;
+                    downloadFileName = `converted_document.${extension}`;
+                    
+                    // 다운로드 섹션 표시
+                    loading.style.display = 'none';
+                    downloadSection.style.display = 'block';
+                } else {
+                    const error = await response.text();
+                    alert('변환 중 오류가 발생했습니다: ' + error);
+                    loading.style.display = 'none';
+                }
+            } catch (error) {
+                alert('오류가 발생했습니다: ' + error.message);
+                loading.style.display = 'none';
+            } finally {
+                submitButton.disabled = false;
+            }
+        });
+
+        function downloadFile() {
+            if (downloadUrl && downloadFileName) {
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = downloadFileName;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(downloadUrl);
+                a.remove();
+            }
+        }
+
+        // 진행 상황 업데이트를 위한 EventSource 연결
+        const eventSource = new EventSource('/progress');
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            const progressBar = document.querySelector('.progress-bar');
+            const pageStatus = document.querySelector('.page-status');
+            
+            progressBar.style.width = `${data.progress}%`;
+            progressBar.textContent = `${data.progress}%`;
+            pageStatus.textContent = `처리된 페이지: ${data.current_page}/${data.total_pages}`;
+            
+            if (data.progress === 100) {
+                eventSource.close();
+            }
+        };
+
+        // 번역기 옵션 동적 로딩 및 언어 드롭다운 활성화/비활성화
+        async function loadTranslators() {
+            const res = await fetch('/api/available_translators');
+            const translators = await res.json();
+            const select = document.getElementById('translator_type');
+            select.innerHTML = '';
+            // 항상 '번역하지 않음' 옵션 추가
+            const noneOpt = document.createElement('option');
+            noneOpt.value = 'none';
+            noneOpt.textContent = '번역하지 않음';
+            select.appendChild(noneOpt);
+            translators.forEach(opt => {
+                if (opt.value !== 'browser' && opt.value !== 'papago' && opt.value !== 'gpt' && opt.value !== 'deepl') return;
+                if (opt.disabled) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'API 키 설정 필요';
+                    option.disabled = true;
+                    select.appendChild(option);
+                } else {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    if (opt.value === 'browser') option.textContent = '내장 브라우저';
+                    else if (opt.value === 'papago') option.textContent = 'Papago API';
+                    else if (opt.value === 'gpt') option.textContent = 'GPT API';
+                    else if (opt.value === 'deepl') option.textContent = 'DeepL API';
+                    select.appendChild(option);
+                }
+            });
+        }
+        window.addEventListener('DOMContentLoaded', loadTranslators);
+
+        document.getElementById('translator_type').addEventListener('change', function() {
+            const langSelect = document.getElementById('target_lang');
+            if (this.value === 'none') {
+                langSelect.disabled = true;
+            } else {
+                langSelect.disabled = false;
+            }
+        });
+
+        document.getElementById('font_family').addEventListener('change', function() {
+            document.body.style.fontFamily = this.value;
+        });
+    </script>
+</body>
+</html> 
