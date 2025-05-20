@@ -209,6 +209,19 @@ class WebToEbook:
         book.set_title(self.title)
         book.set_language('ko')
         
+        # URL에서 도메인 추출하여 저자로 설정
+        try:
+            from urllib.parse import urlparse
+            parsed_url = urlparse(self.base_url)
+            domain = parsed_url.netloc
+            if domain:
+                book.add_author(domain)
+            else:
+                book.add_author("Unknown") # 도메인 추출 실패 시 기본값
+        except Exception as e:
+            self.logger.warning(f"EPUB 저자 설정 중 도메인 추출 오류: {e}. 기본 저자 사용.")
+            book.add_author("Unknown")
+
         # CSS 스타일 추가
         style = f'''
         body {{ 
@@ -264,18 +277,24 @@ class WebToEbook:
             font-size: 0.9em;
             line-height: 1.45;
             margin: 1em 0;
+            border: 1px solid #ddd; /* 코드 블록 테두리 추가 */
+            border-radius: 4px; /* 코드 블록 모서리 둥글게 */
         }}
-        code {{
+        code {{ /* 인라인 코드 스타일 */
             font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-            background-color: rgba(27, 31, 35, 0.05);
+            background-color: #e7e7e7; /* 인라인 코드 배경색 약간 변경 */
             padding: 0.2em 0.4em;
             border-radius: 3px;
             font-size: 0.9em;
+            word-break: break-all; /* 인라인 코드도 긴 경우 줄바꿈 */
         }}
-        pre code {{
+        pre code {{ /* 코드 블록 내의 code 태그는 pre 스타일을 따르도록 */
             background-color: transparent;
             padding: 0;
             border-radius: 0;
+            border: none; 
+            font-size: inherit; /* pre의 폰트 크기 상속 */
+            line-height: inherit; /* pre의 줄 간격 상속 */
         }}
         blockquote {{
             margin: 1em 0;
@@ -287,10 +306,16 @@ class WebToEbook:
             border-collapse: collapse;
             width: 100%;
             margin: 1em 0;
+            table-layout: fixed; /* 표 레이아웃 고정 */
+            border: 1px solid #ccc; /* 표 전체 테두리 */
         }}
         th, td {{
-            border: 1px solid #dfe2e5;
-            padding: 6px 13px;
+            border: 1px solid #ccc; /* 셀 테두리 변경 */
+            padding: 8px 10px; /* 셀 패딩 조정 */
+            word-wrap: break-word; /* 긴 단어 줄바꿈 (overflow-wrap과 유사) */
+            overflow-wrap: break-word; /* 내용이 셀을 넘칠 때 줄바꿈 */
+            hyphens: auto; /* 필요한 경우 하이픈 추가 (지원하는 뷰어에서) */
+            text-align: left; /* 기본 왼쪽 정렬 */
         }}
         th {{
             background-color: #f6f8fa;
@@ -643,9 +668,42 @@ class WebToEbook:
                 table_data = []
                 for tr in element.find_all('tr'):
                     row = []
-                    for td in tr.find_all('td'):
+                    for td in tr.find_all(['td', 'th']): # th도 데이터로 처리할 수 있도록 수정
                         row.append(td.get_text().strip())
                     table_data.append(row)
+                
+                if table_data:
+                    # 테이블 생성 (첫 행을 헤더로 가정)
+                    num_cols = len(table_data[0]) if table_data else 0
+                    if num_cols > 0:
+                        # 행 수를 실제 데이터에 맞게 조정
+                        num_rows = len(table_data)
+                        try:
+                            doc_table = doc.add_table(rows=num_rows, cols=num_cols)
+                            doc_table.style = 'TableGrid' # 기본 표 스타일 적용
+                            doc_table.autofit = True # 자동 맞춤 기능 (내용에 따라 너비 조절 시도)
+
+                            for i, row_data in enumerate(table_data):
+                                cells = doc_table.rows[i].cells
+                                for j, cell_text in enumerate(row_data):
+                                    if j < len(cells): # 열 인덱스 범위 확인
+                                        cells[j].text = cell_text
+                                    else:
+                                        self.logger.warning(f"테이블 데이터 열 ({j+1})이 실제 테이블 열 수 ({len(cells)})를 초과합니다.")
+                            
+                            # 첫 행을 헤더로 처리 (선택적: 굵게 등)
+                            if num_rows > 0:
+                                for cell in doc_table.rows[0].cells:
+                                    for paragraph in cell.paragraphs:
+                                        for run in paragraph.runs:
+                                            run.bold = True
+                        except Exception as e_table:
+                            self.logger.error(f"DOCX 테이블 생성 중 오류: {e_table}")
+                            doc.add_paragraph(f"[테이블 생성 오류: {e_table}]")
+                    else:
+                        self.logger.warning("테이블 데이터가 비어있거나 형식이 잘못되어 DOCX 테이블을 생성할 수 없습니다.")
+                else:
+                    self.logger.info("HTML에 테이블 데이터가 없어 DOCX 테이블을 생성하지 않습니다.")
         
         doc.save(output_path)
 
@@ -728,6 +786,8 @@ class WebToEbook:
                     font-size: 0.9em;
                     line-height: 1.45;
                     margin: 1em 0;
+                    white-space: pre-wrap; /* 코드 줄바꿈 허용 */
+                    word-break: break-word; /* 긴 코드 줄바꿈 처리 */
                 }}
                 code {{
                     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
@@ -769,6 +829,7 @@ class WebToEbook:
                 th, td {{
                     border: 1px solid #dfe2e5;
                     padding: 6px 13px;
+                    word-break: break-word; /* 긴 단어 줄바꿈 추가 */
                 }}
                 th {{
                     background-color: #f6f8fa;

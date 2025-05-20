@@ -64,10 +64,12 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4" data-disable-translation="{{ disable_translation }}">
-    <div class="bg-white shadow-xl rounded-lg p-6 sm:p-10 w-full max-w-3xl">
-        <header class="mb-8 sm:mb-10">
-            <h1 class="text-3xl sm:text-4xl font-bold text-center text-dark mb-2">
+<body class="bg-gray-100" data-disable-translation="{{ disable_translation }}">
+    <div class="flex flex-col md:flex-row justify-center min-h-screen p-4 gap-4">
+        <!-- Main Content Area -->
+        <div class="bg-white shadow-xl rounded-lg p-6 sm:p-10 w-full md:max-w-3xl order-2 md:order-1">
+            <header class="mb-8 sm:mb-10">
+                <h1 class="text-3xl sm:text-4xl font-bold text-center text-dark mb-2">
                 웹페이지 변환 마법사 <i class="fas fa-wand-magic-sparkles text-primary"></i>
             </h1>
             <p class="text-center text-secondary text-sm sm:text-base">
@@ -278,9 +280,55 @@
                  (adsbygoogle = window.adsbygoogle || []).push({});
             </script>
             -->
-            <p>광고가 표시될 영역입니다.</p>
+            {% if ad_client_id_bottom and ad_slot_id_bottom %}
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="{{ ad_client_id_bottom }}"
+                 data-ad-slot="{{ ad_slot_id_bottom }}"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+            <script>
+                 (adsbygoogle = window.adsbygoogle || []).push({});
+            </script>
+            {% else %}
+            <p>하단 광고가 표시될 영역입니다.</p>
+            {% endif %}
         </div>
     </div>
+
+    <!-- Right Sidebar Ad Area -->
+    <div class="w-full md:w-64 order-1 md:order-2 flex-shrink-0">
+        <div class="bg-white shadow-xl rounded-lg p-4 sticky top-4">
+            <h3 class="text-lg font-semibold text-gray-700 mb-3 text-center">광고</h3>
+            <div class="adsense-right-container text-center text-xs text-gray-400">
+                <!-- 여기에 오른쪽 애드센스 광고 코드를 삽입하세요. 예: -->
+                <!--
+                <ins class="adsbygoogle"
+                     style="display:block"
+                     data-ad-client="{{ ad_client_id_right }}"
+                     data-ad-slot="{{ ad_slot_id_right }}"
+                     data-ad-format="auto"
+                     data-full-width-responsive="true"></ins>
+                <script>
+                     (adsbygoogle = window.adsbygoogle || []).push({});
+                </script>
+                -->
+                 {% if ad_client_id_right and ad_slot_id_right %}
+                <ins class="adsbygoogle"
+                     style="display:block;min-width:120px;max-width:240px;width:100%;height:600px;"
+                     data-ad-client="{{ ad_client_id_right }}"
+                     data-ad-slot="{{ ad_slot_id_right }}"></ins>
+                <script>
+                     (adsbygoogle = window.adsbygoogle || []).push({});
+                </script>
+                {% else %}
+                <p>오른쪽 광고 영역</p>
+                <p class="text-xs text-gray-400">(160x600 또는 유사 크기 권장)</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 
     <script>
         const SCRIPT_DISABLE_TRANSLATION = document.body.dataset.disableTranslation === 'True';
@@ -428,8 +476,16 @@
             e.preventDefault();
             if (!validateStep(currentStep)) return;
 
-            loadingSection.classList.remove('hidden');
+            // 이전 다운로드 상태 초기화
+            downloadUrl = null;
+            downloadFileName = null;
             downloadSection.classList.add('hidden');
+            // 기존 downloadFileHandler가 downloadBtn에 연결되어 있다면,
+            // 새 변환 시에는 이 버튼 자체가 아니라, 성공 시 새로 생성되는 URL을 사용하므로
+            // 특정 핸들러를 제거할 필요는 없을 수 있습니다. downloadUrl이 null이면 어차피 동작 안 함.
+            // 하지만 명확성을 위해, 버튼 클릭 시 항상 최신 downloadUrl을 참조하도록 합니다.
+
+            loadingSection.classList.remove('hidden');
             errorMessageDiv.classList.add('hidden');
             submitBtn.disabled = true;
             prevBtn.disabled = true;
@@ -475,24 +531,30 @@
                 prevBtn.disabled = false;
             }
         });
-
-        downloadBtn.addEventListener('click', function() {
+        
+        // 다운로드 버튼 클릭 핸들러
+        function downloadFileHandler() {
             if (downloadUrl && downloadFileName) {
                 const a = document.createElement('a');
                 a.href = downloadUrl;
                 a.download = downloadFileName;
                 document.body.appendChild(a);
                 a.click();
-                window.URL.revokeObjectURL(downloadUrl);
+                // Blob URL은 다운로드 후 명시적으로 해제해주는 것이 좋습니다.
+                // 다운로드가 시작된 후 약간의 시간차를 두고 해제하거나,
+                // 사용자가 페이지를 벗어날 때 해제하는 방법도 고려할 수 있습니다.
+                // 여기서는 클릭 후 바로 해제합니다. 대부분의 경우 문제없이 동작합니다.
+                window.URL.revokeObjectURL(downloadUrl); 
                 a.remove();
-                // Optionally reset to first step
-                // currentStep = 1;
-                // showStep(currentStep);
-                // form.reset();
-                // loadTranslators(); 
-                // document.getElementById('target_lang').disabled = true;
+                
+                // 다운로드 후 상태 초기화 (선택적)
+                // downloadUrl = null;
+                // downloadFileName = null;
+                // downloadSection.classList.add('hidden');
             }
-        });
+        }
+        // 페이지 로드 시 다운로드 버튼에 이벤트 리스너 한 번만 할당
+        downloadBtn.addEventListener('click', downloadFileHandler);
 
         const eventSource = new EventSource('/progress');
         eventSource.onmessage = function(event) {

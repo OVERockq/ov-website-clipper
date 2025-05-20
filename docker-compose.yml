@@ -11,4 +11,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - DISABLE_TRANSLATION=true
+      - AD_CLIENT_ID_RIGHT=ca-pub-YOUR_RIGHT_AD_CLIENT_ID # 여기에 실제 오른쪽 광고 클라이언트 ID 입력
+      - AD_SLOT_ID_RIGHT=YOUR_RIGHT_AD_SLOT_ID # 여기에 실제 오른쪽 광고 슬롯 ID 입력
+      - AD_CLIENT_ID_BOTTOM=ca-pub-YOUR_BOTTOM_AD_CLIENT_ID # 여기에 실제 하단 광고 클라이언트 ID 입력
+      - AD_SLOT_ID_BOTTOM=YOUR_BOTTOM_AD_SLOT_ID # 여기에 실제 하단 광고 슬롯 ID 입력
     restart: unless-stopped

@@ -31,6 +31,12 @@ if not DISABLE_TRANSLATION:
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
     DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
 
+# 광고 ID 환경변수
+AD_CLIENT_ID_RIGHT = os.environ.get('AD_CLIENT_ID_RIGHT')
+AD_SLOT_ID_RIGHT = os.environ.get('AD_SLOT_ID_RIGHT')
+AD_CLIENT_ID_BOTTOM = os.environ.get('AD_CLIENT_ID_BOTTOM')
+AD_SLOT_ID_BOTTOM = os.environ.get('AD_SLOT_ID_BOTTOM')
+
 # 진행 상황을 저장할 전역 변수
 progress_data = {
     'current_page': 0,
@@ -64,7 +70,14 @@ def update_progress(current, total):
 
 @app.route('/')
 def index():
-    return render_template('index.html', disable_translation=DISABLE_TRANSLATION)
+    return render_template(
+        'index.html', 
+        disable_translation=DISABLE_TRANSLATION,
+        ad_client_id_right=AD_CLIENT_ID_RIGHT,
+        ad_slot_id_right=AD_SLOT_ID_RIGHT,
+        ad_client_id_bottom=AD_CLIENT_ID_BOTTOM,
+        ad_slot_id_bottom=AD_SLOT_ID_BOTTOM
+    )
 
 @app.route('/api/available_translators')
 def available_translators():
@@ -169,16 +182,33 @@ def convert():
                     if not os.path.exists(output_path): # 한 번 더 검사
                         raise FileNotFoundError(f"변환된 파일이 지정된 경로에 생성되지 않았습니다: {output_path}")
 
-                doc_title = converter.title if converter.title else "converted_document"
-                safe_title = "".join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in doc_title).rstrip()
-                
+                # 파일명 생성을 위한 URL 정제
+                base_filename_url = url.replace("https://", "").replace("http://", "")
+                # 특수문자를 '_'로 치환 (슬래시 포함)
+                safe_base_filename = "".join(c if c.isalnum() else '_' for c in base_filename_url)
+                # 연속된 '_'를 하나로 줄임
+                safe_base_filename = re.sub(r"__+", "_", safe_base_filename).strip('_')
+
+                # 웹페이지 타이틀이 있으면 사용, 없으면 URL 기반 이름 사용
+                doc_title = converter.title if converter.title else ""
+                if doc_title:
+                    safe_title_from_page = "".join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in doc_title).rstrip().replace(' ', '_')
+                    # 웹페이지 타이틀과 URL 기반 이름을 조합하거나, 더 적절한 것을 선택할 수 있습니다.
+                    # 여기서는 URL 기반을 우선으로 하고, 웹페이지 타이틀이 있으면 덧붙이는 방식은 너무 길어질 수 있으므로
+                    # URL 기반으로 생성된 이름을 사용합니다. 만약 웹페이지 타이틀을 우선하고 싶다면 아래 주석을 해제하고 로직 수정.
+                    # final_base_name = safe_title_from_page if safe_title_from_page else safe_base_filename
+                    final_base_name = safe_base_filename if safe_base_filename else "converted_document"
+                else:
+                    final_base_name = safe_base_filename if safe_base_filename else "converted_document"
+
+
                 # Add language suffix if translation was performed
                 # 다운로드 파일명 확장자도 .md로 통일
                 download_extension = "md" if output_format.lower() == "markdown" else output_format
                 if target_lang and translator_type != 'none': # target_lang은 convert 함수의 지역 변수
-                    final_download_name = f"{safe_title}_{target_lang}.{download_extension}"
+                    final_download_name = f"{final_base_name}_{target_lang}.{download_extension}"
                 else:
-                    final_download_name = f"{safe_title}.{download_extension}"
+                    final_download_name = f"{final_base_name}.{download_extension}"
 
             except Exception as e:
                 app.logger.error(f"변환 스레드 내 오류: {repr(e)}")
@@ -220,4 +250,5 @@ def convert():
         return str(e), 500
 
 if __name__ == '__main__':
+    import re # re 모듈 임포트 추가
     app.run(host='0.0.0.0', port=5001, debug=True)
