@@ -20,27 +20,33 @@ from tqdm import tqdm
 import logging
 from urllib.parse import urljoin
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.style import WD_STYLE_TYPE
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 import markdown
 from weasyprint import HTML
 import tempfile
 import re
 
 class WebToEbook:
-    def __init__(self, title: str, base_url: str, content_selector: str, menu_selector: str = None, txt_content: str = None, translator_type: str = 'browser', papago_id: str = None, papago_secret: str = None, openai_key: str = None, deepl_key: str = None, font_family: str = 'Noto Sans KR'):
+    def __init__(self, title: str, base_url: str, content_selector: str, menu_selector: str = None,  
+                 translator_type: str = 'none', target_lang: str = None, # target_lang 추가
+                 papago_id: str = None, papago_secret: str = None,  
+                 openai_key: str = None, deepl_key: str = None, font_family: str = 'Noto Sans KR'):
         self.title = title
         self.base_url = base_url
         self.content_selector = content_selector
         self.menu_selector = menu_selector
-        self.txt_content = txt_content
         self.translator_type = translator_type
-        self.papago_id = papago_id
+        self.target_lang = target_lang # target_lang 저장
+        self.papago_id = papago_id # papago_id 저장 추가
         self.papago_secret = papago_secret
         self.openai_key = openai_key
         self.deepl_key = deepl_key
         self.font_family = font_family
         self.pages = []
         self.setup_logging()
+        
         self.setup_driver()
 
     def setup_logging(self):
@@ -59,56 +65,126 @@ class WebToEbook:
         chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--disable-software-rasterizer')
         
-        service = Service('/usr/local/bin/chromedriver')
+        # 'translator_type'이 'browser'일 때 Chrome 내장 번역 기능 활성화
+        if self.translator_type == 'browser' and self.target_lang:
+            self.logger.info(f"Chrome 내장 번역을 위해 브라우저 언어를 {self.target_lang}로 설정하고 번역 기능을 활성화합니다.")
+            chrome_options.add_argument(f"--lang={self.target_lang}")
+            # 번역을 활성화하고, 특정 언어 페이지를 항상 대상 언어로 번역하도록 설정 시도
+            # 원본 언어를 알 수 없으므로, Chrome이 자동 감지 후 target_lang으로 번역하도록 유도
+            # 번역 관련 prefs 설정 강화
+            prefs = {
+                "profile.default_content_setting_values.popups": 0,
+                "profile.default_content_settings.translate": 1, # 1: 허용, 2: 차단
+                "translate_whitelists": {}, # 초기화 후 동적으로 설정
+                "translate":{"enabled":"true"}
+            }
+
+            # 대상 언어가 'ko'일 때, 영어, 일본어, 중국어, 미정의 언어를 한국어로 번역하도록 설정
+            if self.target_lang == 'ko':
+                prefs["translate_whitelists"] = {
+                    "en": "ko", "ja": "ko", "zh-CN": "ko", "zh-TW": "ko", "und": "ko"
+                }
+            # 대상 언어가 'en'일 때, 한국어, 일본어, 중국어, 미정의 언어를 영어로 번역하도록 설정
+            elif self.target_lang == 'en':
+                 prefs["translate_whitelists"] = {
+                    "ko": "en", "ja": "en", "zh-CN": "en", "zh-TW": "en", "und": "en"
+                }
+            # 기타 대상 언어의 경우, 영어와 미정의 언어를 해당 대상 언어로 번역하도록 기본 설정
+            else:
+                prefs["translate_whitelists"] = {
+                    "en": self.target_lang, "und": self.target_lang
+                }
+            
+            # 만약 whitelist의 키와 값이 같다면 (예: "en":"en"), 해당 항목 제거
+            keys_to_delete = [key for key, value in prefs["translate_whitelists"].items() if key == value]
+            for key in keys_to_delete:
+                del prefs["translate_whitelists"][key]
+
+            self.logger.info(f"Chrome prefs 설정: {prefs}")
+            chrome_options.add_experimental_option("prefs", prefs)
+            # 일부 성공 사례에서 언급된 추가 옵션 (효과 미지수)
+            chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+
+        service = Service('/usr/local/bin/chromedriver') # 경로가 시스템에 맞게 설정되어 있는지 확인
         self.driver = webdriver.Chrome(service=service, options=chrome_options)
 
     def get_menu_links(self) -> List[str]:
         """메뉴에서 링크를 추출합니다."""
         if not self.menu_selector:
             return []
-            
         try:
             self.driver.get(self.base_url)
             time.sleep(2)
-            
             if self.menu_selector.startswith('//'):
                 menu = self.driver.find_element("xpath", self.menu_selector)
             else:
                 menu = self.driver.find_element("css selector", self.menu_selector)
-                
             links = menu.find_elements("tag name", "a")
             return [link.get_attribute('href') for link in links if link.get_attribute('href')]
-            except Exception as e:
+        except Exception as e:
             self.logger.error(f"메뉴 링크 추출 중 오류 발생: {str(e)}")
             return []
         
     def get_page_content(self, url: str = None) -> str:
         """페이지의 본문 내용을 추출합니다."""
-        if url:
-        self.driver.get(url)
+        effective_url = url or self.base_url
+        self.driver.get(effective_url)
+
+        # 'translator_type'이 'browser'일 때 번역 적용 대기
+        if self.translator_type == 'browser' and self.target_lang:
+            self.logger.debug(f"내장 브라우저 번역 시도: URL='{effective_url}', 대상 언어='{self.target_lang}'")
+            self.logger.info(f"Chrome 내장 번역 ({self.target_lang}) 적용 대기 시작...")
+            
+            # 번역 완료를 기다리는 더 확실한 방법 (예: html 태그의 lang 속성 변경 감지)
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.webdriver.common.by import By
+            
+            original_lang = self.driver.find_element(By.TAG_NAME, "html").get_attribute("lang")
+            self.logger.debug(f"원본 페이지 HTML lang 속성: {original_lang}")
+
+            # 최대 15초까지 html의 lang 속성이 target_lang으로 변경되기를 기다림
+            # 또는 lang 속성이 비어있지 않고, original_lang과 다른 경우도 번역된 것으로 간주 (일부 사이트는 target_lang과 정확히 일치 안 할 수 있음)
+            try:
+                # WebDriverWait 조건: html lang 속성 변경 또는 body에 'translated-' 클래스 존재
+                WebDriverWait(self.driver, 15).until(
+                    lambda driver: (
+                        driver.find_element(By.TAG_NAME, "html").get_attribute("lang") == self.target_lang or
+                        (driver.find_element(By.TAG_NAME, "html").get_attribute("lang") != "" and
+                         driver.find_element(By.TAG_NAME, "html").get_attribute("lang") != original_lang and
+                         self.target_lang != original_lang) or
+                        ("translated-" in driver.find_element(By.TAG_NAME, "body").get_attribute("class"))
+                    )
+                )
+                final_html_lang = self.driver.find_element(By.TAG_NAME, "html").get_attribute("lang")
+                body_class = self.driver.find_element(By.TAG_NAME, "body").get_attribute("class")
+                self.logger.info(f"Chrome 내장 번역 적용 완료 또는 변경 감지. HTML lang: {final_html_lang}, Body class: {body_class}")
+                # WebDriverWait가 성공했으므로, 추가적인 긴 대기는 불필요할 수 있음. DOM 안정화를 위해 짧은 시간만 유지하거나 제거.
+                time.sleep(0.5) # DOM 안정화를 위한 매우 짧은 추가 대기
+            except Exception as e_wait:
+                self.logger.warning(f"Chrome 내장 번역 완료 감지 시간 초과 또는 실패: {e_wait}. 현재 페이지 내용으로 계속 진행합니다. (추가 대기 3초)")
+                time.sleep(3) # WebDriverWait 실패 시, 번역이 느리게 적용될 가능성을 고려한 최소한의 대기 (기존 5초에서 줄임)
         else:
-            self.driver.get(self.base_url)
-        time.sleep(2)
+            time.sleep(2) 
         
         try:
-            if self.content_selector.startswith('//'):
-            content = self.driver.find_element("xpath", self.content_selector)
-            else:
+            if self.content_selector == "__AUTO_SINGLE_PAGE__":
+                # 단일 페이지 자동 인식 모드: body 전체를 가져오고 clean_for_reading_mode에 의존
+                self.logger.info(f"단일 페이지 자동 인식 모드로 body 전체 내용 추출 - URL: {effective_url}")
+                content_html = self.driver.find_element("tag name", "body").get_attribute('innerHTML')
+            elif self.content_selector.startswith('//'): # XPath
+                content = self.driver.find_element("xpath", self.content_selector)
+                content_html = content.get_attribute('innerHTML')
+            else: # CSS Selector
                 content = self.driver.find_element("css selector", self.content_selector)
-                
-            content_html = content.get_attribute('innerHTML')
-            self.logger.debug(f"페이지 내용 추출 - URL: {url or self.base_url}")
+                content_html = content.get_attribute('innerHTML')
+            
+            self.logger.debug(f"페이지 내용 추출 완료 - URL: {effective_url}")
             return content_html
         except Exception as e:
             self.logger.error(f"페이지 내용 추출 중 오류 발생: {str(e)}")
             return ""
-
-    def process_txt_content(self) -> List[str]:
-        """텍스트 파일 내용을 페이지로 분리합니다."""
-        if not self.txt_content:
-            return []
-            
-        return [page.strip() for page in self.txt_content.split('\n\n') if page.strip()]
 
     def create_index_page(self) -> str:
         """목차 페이지를 생성합니다."""
@@ -386,8 +462,10 @@ class WebToEbook:
                     zipf.writestr(filename, md_content)
         else:
             # 단일 페이지 처리
+            if not output_path.lower().endswith(".md"):
+                output_path += ".md"
             soup = BeautifulSoup(self.clean_for_reading_mode(content), 'html.parser')
-        with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, 'w', encoding='utf-8') as f:
                 for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre', 'blockquote', 'img', 'table']):
                     if element.name.startswith('h'):
                         level = int(element.name[1])
@@ -496,35 +574,78 @@ class WebToEbook:
             # 이미지 처리
                 try:
                     img_url = urljoin(self.base_url, element.get('src', ''))
+                    alt_text = element.get('alt', '')
+
+                    if img_url.lower().endswith('.svg'):
+                        self.logger.warning(f"SVG 이미지는 DOCX에서 직접 지원되지 않습니다. 건너뜁니다: {img_url}")
+                        caption_text = f"[SVG 이미지: {alt_text or img_url}]"
+                        if alt_text:
+                            p = doc.add_paragraph(caption_text)
+                            p.style = 'Caption'
+                            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        continue
+
                     response = requests.get(img_url)
-                    if response.status_code == 200:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-                            tmp.write(response.content)
-                            doc.add_picture(tmp.name, width=Inches(6))
-                            if element.get('alt'):
-                                p = doc.add_paragraph(element['alt'])
-                                p.style = 'Caption'
-                                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                except Exception as e:
-                    self.logger.error(f"이미지 처리 중 오류 발생: {str(e)}")
+                    response.raise_for_status() # HTTP 오류 발생 시 예외 발생
+
+                    # 이미지 형식을 유추하거나 기본값 사용 (PNG, JPG 등)
+                    # content_type = response.headers.get('Content-Type', '').lower()
+                    # if 'jpeg' in content_type or 'jpg' in content_type:
+                    #     suffix = '.jpg'
+                    # elif 'png' in content_type:
+                    #     suffix = '.png'
+                    # else: # 기타 지원될 수 있는 형식 또는 알 수 없는 형식
+                    #     self.logger.warning(f"알 수 없는 이미지 Content-Type ({content_type}) 또는 지원되지 않는 이미지 형식일 수 있습니다: {img_url}. PNG로 가정하고 시도합니다.")
+                    #     suffix = '.png' # 기본적으로 png로 시도
+
+                    # 파일 확장자로 이미지 형식 결정 시도
+                    img_filename_lower = img_url.lower()
+                    if img_filename_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff')):
+                        suffix = os.path.splitext(img_url)[1]
+                    else:
+                        # Content-Type 확인 시도 (선택적)
+                        content_type = response.headers.get('Content-Type', '').lower()
+                        if 'jpeg' in content_type or 'jpg' in content_type:
+                            suffix = '.jpg'
+                        elif 'png' in content_type:
+                            suffix = '.png'
+                        else:
+                            self.logger.warning(f"이미지 URL에 명확한 확장자가 없고 Content-Type({content_type})으로도 유추하기 어렵습니다. PNG로 가정: {img_url}")
+                            suffix = '.png'
+
+
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                        tmp.write(response.content)
+                        tmp_path = tmp.name
+                    
+                    try:
+                        # 이미지 너비는 페이지 너비에 맞게 조정 (예: 6인치)
+                        doc.add_picture(tmp_path, width=Inches(6))
+                        if alt_text:
+                            p = doc.add_paragraph(alt_text)
+                            p.style = 'Caption'
+                            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    except Exception as e_img_add:
+                        self.logger.error(f"DOCX에 이미지 추가 중 오류 발생 (파일: {tmp_path}, URL: {img_url}): {repr(e_img_add)}")
+                        doc.add_paragraph(f"[이미지 삽입 실패: {alt_text or img_url} - {repr(e_img_add)}]")
+                    finally:
+                        if os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+
+                except requests.exceptions.RequestException as e_req:
+                    self.logger.error(f"DOCX 이미지 다운로드 중 오류 발생 (URL: {img_url}): {repr(e_req)}")
+                    doc.add_paragraph(f"[이미지 다운로드 실패: {alt_text or img_url} - {repr(e_req)}]")
+                except Exception as e_generic:
+                    self.logger.error(f"DOCX 이미지 처리 중 알 수 없는 오류 발생 (URL: {img_url}): {repr(e_generic)}")
+                    doc.add_paragraph(f"[이미지 처리 중 알 수 없는 오류: {alt_text or img_url} - {repr(e_generic)}]")
             elif element.name == 'table':
                 # 테이블 처리
-                table = doc.add_table(rows=0, cols=0)
-                table.style = 'Table Grid'
-                
-                # 헤더 처리
-                header_row = table.add_row()
-                for th in element.find_all('th'):
-                    cell = header_row.add_cell()
-                    cell.text = th.get_text().strip()
-                    cell.paragraphs[0].style = 'Table Heading'
-                
-                # 데이터 행 처리
-                for tr in element.find_all('tr')[1:]:
-                    row = table.add_row()
+                table_data = []
+                for tr in element.find_all('tr'):
+                    row = []
                     for td in tr.find_all('td'):
-                        cell = row.add_cell()
-                        cell.text = td.get_text().strip()
+                        row.append(td.get_text().strip())
+                    table_data.append(row)
         
         doc.save(output_path)
 
@@ -533,20 +654,29 @@ class WebToEbook:
         soup = BeautifulSoup(self.clean_for_reading_mode(content), 'html.parser')
         
         # 이미지 처리
+        temp_image_files = []
         for img in soup.find_all('img'):
             try:
                 img_url = urljoin(self.base_url, img.get('src', ''))
-                response = requests.get(img_url)
-                if response.status_code == 200:
-                    # 임시 파일로 이미지 저장
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-                        tmp.write(response.content)
+                if img_url.startswith('file://'): # Already a local file, likely from a previous step or bad source
+                    pass
+                else:
+                    response = requests.get(img_url, timeout=10) # Added timeout
+                    if response.status_code == 200:
+                        # 임시 파일로 이미지 저장
+                        tmp_img_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+                        tmp_img_file.write(response.content)
+                        tmp_img_file.close()
                         # 이미지 태그의 src를 로컬 파일 경로로 변경
-                        img['src'] = f"file://{tmp.name}"
+                        img['src'] = f"file://{tmp_img_file.name}"
+                        temp_image_files.append(tmp_img_file.name)
+                    else:
+                        self.logger.warning(f"이미지 다운로드 실패 ({response.status_code}): {img_url}")
+                        img.replace_with(soup.new_string(f"[이미지 다운로드 실패: {img.get('alt', '')}]"))
             except Exception as e:
-                self.logger.error(f"이미지 처리 중 오류 발생: {str(e)}")
+                self.logger.error(f"PDF 이미지 처리 중 오류 발생: {str(e)}")
                 # 이미지 로드 실패 시 alt 텍스트로 대체
-                img.replace_with(soup.new_string(f"[이미지: {img.get('alt', '')}]"))
+                img.replace_with(soup.new_string(f"[이미지 처리 오류: {img.get('alt', '')}]"))
         
         html_content = f"""
         <!DOCTYPE html>
@@ -660,7 +790,7 @@ class WebToEbook:
         
         try:
             # PDF 생성
-            HTML(string=html_content).write_pdf(
+            HTML(string=html_content, base_url=self.base_url).write_pdf(
                 output_path,
                 presentational_hints=True,
                 optimize_size=('fonts', 'images'),
@@ -670,6 +800,15 @@ class WebToEbook:
         except Exception as e:
             self.logger.error(f"PDF 생성 중 오류 발생: {str(e)}")
             raise
+        finally:
+            # 임시 이미지 파일 삭제
+            for tmp_file_path in temp_image_files:
+                if os.path.exists(tmp_file_path):
+                    try:
+                        os.remove(tmp_file_path)
+                        self.logger.debug(f"임시 이미지 파일 삭제: {tmp_file_path}")
+                    except Exception as e_remove:
+                        self.logger.error(f"임시 이미지 파일 삭제 중 오류: {tmp_file_path}, {e_remove}")
 
     def translate_text(self, text: str, target_lang: str) -> str:
         """텍스트를 지정된 언어로 번역합니다."""
@@ -680,25 +819,67 @@ class WebToEbook:
             self.logger.error(f"번역 중 오류 발생: {str(e)}")
             return text
 
-    def translate_html_text(self, html, target_lang, translator_type):
+    def translate_html_text(self, html, translator_type): # target_lang 파라미터 제거
+        # 'browser' 또는 'chrome_builtin' (이전 버전 호환)의 경우, 이미 Selenium 단계에서 처리되었으므로 추가 작업 없음
+        if translator_type == 'browser' or translator_type == 'chrome_builtin':
+            self.logger.info(f"'{translator_type}' 옵션 선택됨. Selenium 단계에서 브라우저 번역이 시도되었으므로 서버 측 추가 번역은 수행하지 않습니다.")
+            return html
+
+        if not self.target_lang:
+            self.logger.warning("대상 언어가 설정되지 않아 서버 측 번역을 건너<0xEB><0x9B><0x8D>니다.")
+            return html
+
         soup = BeautifulSoup(html, 'html.parser')
+        
         for elem in soup.find_all(text=True):
             parent = elem.parent.name
-            if parent not in ['code', 'pre', 'script', 'style', 'table']:
-                text = elem.strip()
-                if text:
+            if parent not in ['code', 'pre', 'script', 'style', 'table', 'a']:
+                text_to_translate = elem.strip()
+                if text_to_translate:
                     try:
+                        translated_text = None
                         if translator_type == 'papago':
-                            translated = self.translate_with_papago(text, target_lang)
+                            if self.papago_id and self.papago_secret:
+                                translated_text = self.translate_with_papago(text_to_translate, self.target_lang)
+                            else:
+                                self.logger.warning("Papago API 키가 없어 Papago 번역을 건너<0xEB><0x9B><0x8D>니다.")
+                                translated_text = text_to_translate
                         elif translator_type == 'gpt':
-                            translated = self.translate_with_gpt(text, target_lang)
+                            if self.openai_key:
+                                translated_text = self.translate_with_gpt(text_to_translate, self.target_lang)
+                            else:
+                                self.logger.warning("OpenAI API 키가 없어 GPT 번역을 건너<0xEB><0x9B><0x8D>니다.")
+                                translated_text = text_to_translate
                         elif translator_type == 'deepl':
-                            translated = self.translate_with_deepl(text, target_lang)
-                        else:
-                            translated = GoogleTranslator(source='auto', target=target_lang).translate(text)
-                        elem.replace_with(translated)
+                            if self.deepl_key:
+                                translated_text = self.translate_with_deepl(text_to_translate, self.target_lang)
+                            else:
+                                self.logger.warning("DeepL API 키가 없어 DeepL 번역을 건너<0xEB><0x9B><0x8D>니다.")
+                                translated_text = text_to_translate
+                        elif translator_type == 'google': # 'google' 명시
+                            self.logger.debug(f"GoogleTranslator 호출: 원본='{text_to_translate[:30]}...', 대상='{self.target_lang}'")
+                            try:
+                                translated_candidate = GoogleTranslator(source='auto', target=self.target_lang).translate(text_to_translate)
+                                if translated_candidate and translated_candidate.strip():
+                                    if translated_candidate.strip().lower() != text_to_translate.strip().lower():
+                                        translated_text = translated_candidate
+                                    else:
+                                        translated_text = text_to_translate
+                                else:
+                                    translated_text = text_to_translate
+                            except Exception as e_google:
+                                self.logger.error(f"GoogleTranslator 오류: {str(e_google)}. 원본 유지.")
+                                translated_text = text_to_translate
+                        else: # 알 수 없는 번역기 또는 'none' (이미 process에서 처리됨)
+                            translated_text = text_to_translate
+
+                        if translated_text is not None and translated_text.strip() != "":
+                           elem.replace_with(translated_text)
+                        # else: # 번역 결과가 비거나 원본과 같으면 원본 유지 (별도 처리 불필요)
+
                     except Exception as e:
-                        self.logger.error(f'번역 오류: {e}')
+                        self.logger.error(f"번역 중 오류 (번역기: {translator_type}, 대상: {self.target_lang}): {str(e)}. 원본 유지.")
+        
         return str(soup)
 
     def translate_with_papago(self, text, target_lang):
@@ -777,45 +958,62 @@ class WebToEbook:
                 tag.unwrap()
         # [SVG] 문자열 후처리로 모두 삭제
         result = str(soup)
-        result = result.replace('[SVG]', '')
+        result = re.sub(r'\s*\[SVG\]\s*', '', result, flags=re.IGNORECASE)
         return result
 
-    def process(self, output_path: str, target_lang: str = None, output_format: str = 'epub'):
+    def process(self, output_path: str, output_format: str = 'epub'): # target_lang 파라미터 제거
         """전체 프로세스를 실행합니다."""
         try:
+            # URL에서 웹페이지 타이틀 가져오기 (만약 self.title이 비어있다면)
+            if not self.title and self.base_url:
+                try:
+                    self.driver.get(self.base_url)
+                    time.sleep(1) # 페이지 로딩 대기
+                    page_title = self.driver.title
+                    if page_title:
+                        self.title = page_title.strip()
+                    else:
+                        # 타이틀이 없는 경우를 대비한 기본값
+                        self.title = "제목 없음"
+                    self.logger.info(f"웹페이지에서 추출한 문서 제목: {self.title}")
+                except Exception as e:
+                    self.logger.warning(f"웹페이지 제목 추출 중 오류 발생: {e}. 기본 제목을 사용합니다.")
+                    if not self.title: # 오류 발생 시에도 제목이 비어있으면 기본값 설정
+                        self.title = "제목 없음"
+            elif not self.title and not self.base_url: # URL도 없고 텍스트도 없는 경우 (일어나면 안되지만 방어 코드)
+                 self.title = "제목 없음"
+
             self.logger.info("페이지 내용 수집 중...")
             
-            # 텍스트 파일 내용 처리
-            if self.txt_content:
-                pages = self.process_txt_content()
-                for page in pages:
-                    self.pages.append({
-                        'title': '페이지',
-                        'content': f'<div>{page}</div>'
-                    })
+            # 메뉴 선택자가 있고, content_selector가 AUTO가 아닐 때 (즉, 여러 페이지 모드일 때)만 메뉴 링크 처리
+            if self.menu_selector and self.content_selector != "__AUTO_SINGLE_PAGE__":
+                menu_links = self.get_menu_links()
+                for link in menu_links:
+                    page_content = self.get_page_content(link)
+                    if page_content:
+                        self.pages.append({
+                            'title': link.split('/')[-1],
+                            'content': page_content
+                        })
             else:
-                # 메뉴 선택자가 있는 경우 메뉴 링크만 처리
-                if self.menu_selector:
-                    menu_links = self.get_menu_links()
-                    for link in menu_links:
-                        page_content = self.get_page_content(link)
-                        if page_content:
-                            self.pages.append({
-                                'title': link.split('/')[-1],
-                                'content': page_content
-                            })
-                else:
-                    # 메뉴 선택자가 없는 경우 메인 페이지만 처리
-                    main_content = self.get_page_content()
-                    self.pages.append({
-                        'title': self.title,
-                        'content': main_content
-                    })
+                # 메뉴 선택자가 없는 경우 메인 페이지만 처리
+                main_content = self.get_page_content()
+                self.pages.append({
+                    'title': self.title,
+                    'content': main_content
+                })
             
             # 번역 처리
-            if target_lang and self.pages:
-                for i, page in enumerate(self.pages):
-                    page['content'] = self.translate_html_text(page['content'], target_lang, self.translator_type)
+            if self.target_lang and self.pages: # self.target_lang 사용
+                # 'browser' 또는 'chrome_builtin'이 아닌 경우에만 서버 측 번역 시도
+                if self.translator_type not in ['none', 'browser', 'chrome_builtin']:
+                    for i, page in enumerate(self.pages):
+                        self.logger.info(f"페이지 {i+1} 서버 측 번역 시도. 번역기: {self.translator_type}, 대상 언어: {self.target_lang}")
+                        page['content'] = self.translate_html_text(page['content'], self.translator_type)
+                elif self.translator_type in ['browser', 'chrome_builtin']:
+                    self.logger.info(f"'{self.translator_type}' 옵션이 선택되어 Selenium 단계에서 브라우저 번역이 시도되었습니다. 서버 측 추가 번역은 수행하지 않습니다.")
+                else: # self.translator_type == 'none'
+                    self.logger.info("번역 옵션이 'none'으로 설정되어 번역을 수행하지 않습니다.")
             
             self.logger.info(f"{output_format.upper()} 파일 생성 중...")
             
@@ -845,14 +1043,19 @@ def main():
         base_url="https://docs.cursor.com/",
         content_selector="main",
         menu_selector="nav",  # 메뉴 선택자 추가
-        translator_type="browser"
+        translator_type="chrome_builtin", # 예: 크롬 내장 번역 사용
+        target_lang="en",                 # 대상 언어 설정
+        papago_id=None,
+        papago_secret=None,
+        openai_key=None,
+        deepl_key=None,
+        font_family='Noto Sans KR'
     )
     
     converter.process(
-        output_path="cursor_docs.pdf",
-        target_lang="en",
+        output_path="cursor_docs.pdf", # target_lang 인자 제거
         output_format="pdf"
     )
 
 if __name__ == "__main__":
-    main() 
+    main()

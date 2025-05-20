@@ -3,197 +3,439 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>웹페이지 변환기</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta name="description" content="웹페이지를 EPUB, Markdown, DOCX, PDF 등 다양한 형식으로 손쉽게 변환하세요. 여러 페이지 병합, 번역 기능도 지원합니다.">
+    <meta name="keywords" content="웹페이지 변환, ebook 변환, HTML 변환, EPUB, Markdown, DOCX, PDF, 온라인 변환기, 웹 콘텐츠 저장">
+    <title>웹페이지 변환 마법사 - EPUB, PDF, Markdown 변환</title>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-YOUR_PUBLISHER_ID"
+     crossorigin="anonymous"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: '#3B82F6', // Blue-500
+                            hover: '#2563EB'  // Blue-600
+                        },
+                        secondary: {
+                            DEFAULT: '#6B7280', // Gray-500
+                            hover: '#4B5563'  // Gray-600
+                        },
+                        success: {
+                            DEFAULT: '#10B981', // Emerald-500
+                            hover: '#059669'  // Emerald-600
+                        },
+                        danger: {
+                            DEFAULT: '#EF4444', // Red-500
+                            hover: '#DC2626'  // Red-600
+                        },
+                        info: {
+                            DEFAULT: '#3B82F6', // Blue-500 (Primary와 동일하게 사용 또는 다른 색상 지정)
+                            hover: '#2563EB'
+                        },
+                        light: '#F9FAFB', // Gray-50
+                        dark: '#1F2937'  // Gray-800
+                    }
+                }
+            }
+        }
+    </script>
     <style>
         body {
-            padding: 20px;
-            background-color: #f8f9fa;
+            font-family: 'Inter', sans-serif; /* 좀 더 현대적인 폰트 (CDN 추가 필요 시 알려주세요) */
         }
-        .container {
-            max-width: 800px;
-            background-color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        .step-indicator-line {
+            height: 2px;
+            flex-grow: 1;
+            transition: background-color 0.3s ease-in-out;
         }
-        .form-group {
-            margin-bottom: 20px;
+        .form-select, .form-input {
+            @apply mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm;
         }
-        .help-text {
-            font-size: 0.9em;
-            color: #6c757d;
-            margin-top: 5px;
+        /* 로딩 스피너를 위한 간단한 스타일 */
+        .spinner {
+            border-top-color: transparent;
+            animation: spinner 0.8s linear infinite;
         }
-        .loading {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
-        }
-        .spinner-border {
-            width: 3rem;
-            height: 3rem;
-        }
-        .progress {
-            height: 25px;
-            margin: 20px 0;
-        }
-        .progress-bar {
-            line-height: 25px;
-        }
-        .download-section {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
-            padding: 20px;
-            border: 2px dashed #dee2e6;
-            border-radius: 5px;
-        }
-        .download-btn {
-            margin-top: 10px;
-        }
-        .status-text {
-            margin: 10px 0;
-            font-weight: bold;
+        @keyframes spinner {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1 class="mb-4">웹페이지 변환기</h1>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4" data-disable-translation="{{ disable_translation }}">
+    <div class="bg-white shadow-xl rounded-lg p-6 sm:p-10 w-full max-w-3xl">
+        <header class="mb-8 sm:mb-10">
+            <h1 class="text-3xl sm:text-4xl font-bold text-center text-dark mb-2">
+                웹페이지 변환 마법사 <i class="fas fa-wand-magic-sparkles text-primary"></i>
+            </h1>
+            <p class="text-center text-secondary text-sm sm:text-base">
+                원하는 웹페이지를 손쉽게 EPUB, PDF, Markdown 등 다양한 파일로 변환하세요!
+            </p>
+        </header>
         
-        <form id="convertForm" enctype="multipart/form-data">
-            <div class="form-group">
-                <label for="url">웹페이지 URL</label>
-                <input type="url" class="form-control" id="url" name="url" required>
-                <div class="help-text">변환할 웹페이지의 URL을 입력하세요.</div>
+        <!-- Step Indicator -->
+        <div class="flex items-center mb-10">
+            <div class="step-item flex-1 flex flex-col items-center" data-step="1">
+                <div class="step-circle w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold z-10 bg-primary text-white border-2 border-primary transition-all duration-300">1</div>
+                <p class="mt-2 text-xs sm:text-sm font-medium text-primary transition-all duration-300">URL 입력</p>
+            </div>
+            <div class="step-indicator-line bg-gray-300 transition-all duration-300"></div>
+            <div class="step-item flex-1 flex flex-col items-center" data-step="2">
+                <div class="step-circle w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold z-10 bg-gray-300 text-gray-600 border-2 border-gray-300 transition-all duration-300">2</div>
+                <p class="mt-2 text-xs sm:text-sm text-gray-500 transition-all duration-300">변환 영역 선택</p>
+            </div>
+            <div class="step-indicator-line bg-gray-300 transition-all duration-300"></div>
+            <div class="step-item flex-1 flex flex-col items-center" data-step="3">
+                <div class="step-circle w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold z-10 bg-gray-300 text-gray-600 border-2 border-gray-300 transition-all duration-300">3</div>
+                <p class="mt-2 text-xs sm:text-sm text-gray-500 transition-all duration-300">변환 옵션</p>
+            </div>
+            <div class="step-indicator-line bg-gray-300 transition-all duration-300"></div>
+            <div class="step-item flex-1 flex flex-col items-center" data-step="4">
+                <div class="step-circle w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold z-10 bg-gray-300 text-gray-600 border-2 border-gray-300 transition-all duration-300">4</div>
+                <p class="mt-2 text-xs sm:text-sm text-gray-500 transition-all duration-300">완료</p>
+            </div>
+        </div>
+
+        <form id="convertForm" enctype="multipart/form-data" class="space-y-6">
+            <!-- Step 1: URL 입력 -->
+            <div class="wizard-step active" data-step="1">
+                <h2 class="text-xl font-semibold text-dark mb-6">Step 1: 변환할 웹페이지 URL</h2>
+                <div class="mb-4">
+                    <label for="url" class="block text-sm font-medium text-gray-700 mb-1">웹페이지 URL</label>
+                    <input type="url" class="form-input" id="url" name="url" placeholder="https://example.com" required>
+                    <p class="mt-1 text-xs text-gray-500">변환하고 싶은 웹페이지의 전체 URL을 입력해주세요.</p>
+                    <div class="text-red-500 text-xs mt-1" data-validate-for="url"></div>
+                </div>
             </div>
 
-            <div class="form-group">
-                <label for="title">문서 제목</label>
-                <input type="text" class="form-control" id="title" name="title" required>
-                <div class="help-text">생성될 문서의 제목을 입력하세요.</div>
+            <!-- Step 2: 선택자 입력 -->
+            <div class="wizard-step hidden" data-step="2">
+                <h2 class="text-xl font-semibold text-gray-700 mb-6">Step 2: 변환 영역 선택</h2>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">웹페이지에서 변환할 영역을 어떻게 선택하시겠어요?</label>
+                    <div class="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0">
+                        <label class="flex items-center p-3 border border-gray-300 rounded-md hover:bg-gray-50 cursor-pointer flex-1">
+                            <input type="radio" name="conversion_scope" value="single" class="form-radio h-5 w-5 text-primary focus:ring-primary-hover" checked>
+                            <span class="ml-3 text-sm font-medium text-gray-700">단일 페이지 (자동인식/읽기모드)</span>
+                        </label>
+                        <label class="flex items-center p-3 border border-gray-300 rounded-md hover:bg-gray-50 cursor-pointer flex-1">
+                            <input type="radio" name="conversion_scope" value="multiple" class="form-radio h-5 w-5 text-primary focus:ring-primary-hover">
+                            <span class="ml-3 text-sm font-medium text-gray-700">여러 페이지 (직접 선택자 입력)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="selectors-section" class="hidden space-y-4 pt-4 border-t border-gray-200">
+                    <p class="text-sm text-indigo-600 bg-indigo-50 p-3 rounded-md"><i class="fas fa-info-circle mr-2"></i>여러 페이지 변환 시 아래 선택자를 정확히 입력해주세요.</p>
+                    <div class="mb-4">
+                        <label for="content_selector" class="block text-sm font-medium text-gray-700 mb-1">본문 선택자</label>
+                        <input type="text" class="form-input" id="content_selector" name="content_selector" placeholder="예: main, #content, //div[@class='article-body']">
+                        <p class="mt-1 text-xs text-gray-500">각 페이지에서 실제 내용이 담긴 영역입니다. CSS 선택자 또는 XPath. <span class="text-indigo-500">예: <code>main</code>, <code>.article-content</code></span></p>
+                        <div class="text-red-500 text-xs mt-1" data-validate-for="content_selector"></div>
+                    </div>
+                    <div class="mb-4">
+                        <label for="menu_selector" class="block text-sm font-medium text-gray-700 mb-1">메뉴 선택자</label>
+                        <input type="text" class="form-input" id="menu_selector" name="menu_selector" placeholder="예: nav, .sidebar ul, //div[@class='table-of-contents']">
+                        <p class="mt-1 text-xs text-gray-500">여러 페이지 링크가 포함된 메뉴 영역입니다. CSS 선택자 또는 XPath. <span class="text-indigo-500">예: <code>nav ul.menu</code>, <code>#toc</code></span></p>
+                        <div class="text-red-500 text-xs mt-1" data-validate-for="menu_selector"></div>
+                    </div>
+                </div>
             </div>
 
-            <div class="form-group">
-                <label for="content_selector">본문 선택자</label>
-                <input type="text" class="form-control" id="content_selector" name="content_selector" required>
-                <div class="help-text">본문 내용을 포함하는 요소의 CSS 선택자 또는 XPath를 입력하세요. (예: main, #content, //div[@class='content'])</div>
-            </div>
-
-            <div class="form-group">
-                <label for="menu_selector">메뉴 선택자 (선택사항)</label>
-                <input type="text" class="form-control" id="menu_selector" name="menu_selector">
-                <div class="help-text">추가 페이지를 수집할 메뉴 요소의 CSS 선택자 또는 XPath를 입력하세요. (예: nav, .menu, //ul[@class='navigation'])</div>
-            </div>
-
-            <div class="form-group">
-                <label for="txt_file">텍스트 파일 (선택사항)</label>
-                <input type="file" class="form-control" id="txt_file" name="txt_file" accept=".txt">
-                <div class="help-text">각 페이지를 빈 줄로 구분한 텍스트 파일을 업로드하세요.</div>
-            </div>
-
-            <div class="form-group">
-                <label for="output_format">출력 형식</label>
-                <select class="form-control" id="output_format" name="output_format" required>
+            <!-- Step 3: 포맷 및 번역 설정 -->
+            <div class="wizard-step hidden" data-step="3">
+                <h2 class="text-xl font-semibold text-gray-700 mb-6">Step 3: 변환 옵션 설정</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="output_format" class="block text-sm font-medium text-gray-700 mb-1">출력 형식</label>
+                        <select class="form-select" id="output_format" name="output_format" required>
                     <option value="epub">EPUB</option>
                     <option value="markdown">Markdown</option>
-                    <option value="doc">Word 문서</option>
+                            <option value="doc">Word (DOCX)</option>
                     <option value="pdf">PDF</option>
                 </select>
-                <div class="help-text">변환할 문서 형식을 선택하세요.</div>
             </div>
-
-            <div class="form-group">
-                <label for="merge_pages">페이지 병합</label>
-                <select class="form-control" id="merge_pages" name="merge_pages">
-                    <option value="true">모든 페이지를 하나의 문서로 병합</option>
-                    <option value="false">각 페이지를 개별 문서로 생성</option>
+                    <div>
+                        <label for="merge_pages" class="block text-sm font-medium text-gray-700 mb-1">페이지 병합</label>
+                        <select class="form-select" id="merge_pages" name="merge_pages">
+                            <option value="true">하나의 문서로 병합</option>
+                            <option value="false">개별 문서로 생성</option>
                 </select>
-                <div class="help-text">여러 페이지를 하나의 문서로 병합할지 선택하세요.</div>
+                         <p class="mt-1 text-xs text-gray-500">Markdown 개별 생성 시 ZIP으로 제공됩니다.</p>
+                    </div>
             </div>
-
-            <div class="form-group">
-                <label for="translator_type">번역 옵션</label>
-                <select class="form-control" id="translator_type" name="translator_type" required>
+                {% if not disable_translation %}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="translator_type" class="block text-sm font-medium text-gray-700 mb-1">번역 옵션</label>
+                        <select class="form-select" id="translator_type" name="translator_type" required>
                     <option value="none" selected>번역하지 않음</option>
+                            <!-- JS로 동적 로드 -->
                 </select>
-                <div class="help-text">사용할 번역 방식을 선택하세요. (API 키가 없으면 외부 번역 옵션이 표시되지 않습니다)</div>
             </div>
-            <div class="form-group">
-                <label for="target_lang">번역 언어</label>
-                <select class="form-control" id="target_lang" name="target_lang" disabled>
+                    <div>
+                        <label for="target_lang" class="block text-sm font-medium text-gray-700 mb-1">번역 언어</label>
+                        <select class="form-select" id="target_lang" name="target_lang" disabled>
                     <option value="ko">한국어</option>
                     <option value="en">영어</option>
                     <option value="ja">일본어</option>
                     <option value="zh">중국어</option>
                 </select>
-                <div class="help-text">번역할 언어를 선택하세요.</div>
+                    </div>
             </div>
-
-            <div class="form-group">
-                <label for="font_family">글꼴 선택</label>
-                <select class="form-control" id="font_family" name="font_family">
+                {% endif %}
+                 <div class="mb-4">
+                    <label for="font_family" class="block text-sm font-medium text-gray-700 mb-1">글꼴 (PDF/DOCX 용)</label>
+                    <select class="form-select" id="font_family" name="font_family">
                     <option value="Noto Sans KR" selected>Noto Sans KR</option>
                     <option value="Nanum Gothic">나눔고딕</option>
                     <option value="Malgun Gothic">맑은고딕</option>
-                    <option value="Apple SD Gothic Neo">Apple SD 고딕 Neo</option>
-                    <option value="Gothic A1">Gothic A1</option>
-                    <option value="Spoqa Han Sans Neo">스포카 한 산스 Neo</option>
-                    <option value="Pretendard">프리텐다드</option>
+                        <option value="Apple SD Gothic Neo">Apple SD Gothic Neo</option>
                     <option value="Arial">Arial</option>
                     <option value="Times New Roman">Times New Roman</option>
-                    <option value="Georgia">Georgia</option>
-                    <option value="Verdana">Verdana</option>
-                    <option value="Courier New">Courier New</option>
-                    <option value="Fira Mono">Fira Mono</option>
-                    <option value="D2Coding">D2Coding</option>
                 </select>
-                <div class="help-text">웹 UI와 변환 결과물에 적용할 글꼴을 선택하세요.</div>
+                </div>
             </div>
 
-            <button type="submit" class="btn btn-primary">변환하기</button>
+            <!-- Step 4: 변환 및 다운로드 -->
+            <div class="wizard-step hidden" data-step="4">
+                <h2 class="text-xl font-semibold text-gray-700 mb-6">Step 4: 확인 및 변환</h2>
+                <div id="summary" class="bg-blue-50 p-4 rounded-md mb-6">
+                    <p class="text-sm font-medium text-gray-700 mb-2">입력 정보 요약:</p>
+                    <ul id="summary-list" class="list-disc list-inside text-sm text-gray-600 space-y-1"></ul>
+                </div>
+                <p class="text-sm text-gray-600 mb-6">정보가 정확한지 확인 후 "변환 시작" 버튼을 눌러주세요.</p>
+                
+                <div id="loading-section" class="text-center py-6 hidden">
+                    <div class="spinner w-12 h-12 rounded-full border-4 border-primary border-t-transparent mx-auto"></div>
+                    <p class="text-gray-600 mt-3">변환 중입니다. 잠시 기다려주세요...</p>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mt-4">
+                        <div id="progress-bar" class="bg-primary h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                    <p id="progress-text" class="text-sm text-gray-500 mt-1">0% (0/0 페이지)</p>
+                </div>
+
+                <div id="download-section" class="text-center py-6 hidden">
+                    <i class="fas fa-check-circle text-5xl text-success mb-3"></i>
+                    <h4 class="text-lg font-semibold text-gray-700">변환이 완료되었습니다!</h4>
+                    <p class="text-sm text-gray-600 mt-1 mb-4">아래 버튼으로 다운로드하세요.</p>
+                    <button type="button" id="download-btn" class="w-full sm:w-auto bg-success hover:bg-green-600 text-white font-semibold py-2 px-6 rounded-md shadow-sm transition duration-150 ease-in-out">
+                        <i class="fas fa-download mr-2"></i> 다운로드
+                    </button>
+                </div>
+                 <div id="error-message" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative hidden" role="alert">
+                    <strong class="font-bold">오류:</strong>
+                    <span class="block sm:inline" id="error-text"></span>
+                 </div>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="mt-8 pt-6 border-t border-gray-200 flex justify-between items-center">
+                <button type="button" id="prevBtn" class="bg-secondary hover:bg-secondary-hover text-white font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out hidden">
+                    <i class="fas fa-arrow-left mr-2"></i> 이전
+                </button>
+                <button type="button" id="nextBtn" class="bg-primary hover:bg-primary-hover text-white font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out">
+                    다음 <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+                <button type="submit" id="submitBtn" class="bg-success hover:bg-success-hover text-white font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out hidden">
+                    <i class="fas fa-check mr-2"></i> 변환 시작
+                </button>
+            </div>
         </form>
 
-        <div class="loading">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
+        <div class="mt-10 pt-6 border-t border-gray-200">
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700 p-4 rounded-md shadow" role="alert">
+                <div class="flex">
+                    <div class="py-1"><i class="fas fa-exclamation-triangle fa-lg mr-3"></i></div>
+                    <div>
+                        <p class="font-bold">저작권 유의사항</p>
+                        <p class="text-sm">
+                            본 서비스를 통해 변환된 콘텐츠의 저작권은 원저작자에게 있습니다.
+                            사용자는 개인적인 학습 및 연구 목적으로만 변환된 콘텐츠를 사용해야 하며,
+                            저작권법을 위반하는 방식으로 사용하거나 무단으로 배포, 공유, 상업적으로 이용해서는 안 됩니다.
+                            본 서비스는 사용자가 제공한 URL의 웹 콘텐츠를 기술적으로 변환하는 도구이며,
+                            콘텐츠의 내용이나 저작권에 대한 책임을 지지 않습니다.
+                            서비스 이용으로 인해 발생하는 모든 법적 책임은 사용자 본인에게 있습니다.
+                        </p>
+                    </div>
+                </div>
             </div>
-            <p class="status-text">변환 중입니다. 잠시만 기다려주세요...</p>
-            <div class="progress">
-                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div>
-            </div>
-            <p class="page-status">처리된 페이지: 0/0</p>
         </div>
 
-        <div class="download-section">
-            <h4>변환이 완료되었습니다!</h4>
-            <p>아래 버튼을 클릭하여 변환된 파일을 다운로드하세요.</p>
-            <button class="btn btn-success download-btn" onclick="downloadFile()">다운로드</button>
+        <div class="adsense-container mt-10 text-center text-xs text-gray-400">
+            <!-- 여기에 애드센스 광고 코드를 삽입하세요. 예: -->
+            <!-- 
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="ca-pub-YOUR_PUBLISHER_ID"
+                 data-ad-slot="YOUR_AD_SLOT_ID"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+            <script>
+                 (adsbygoogle = window.adsbygoogle || []).push({});
+            </script>
+            -->
+            <p>광고가 표시될 영역입니다.</p>
         </div>
     </div>
 
     <script>
+        const SCRIPT_DISABLE_TRANSLATION = document.body.dataset.disableTranslation === 'True';
+        let currentStep = 1;
+        const totalSteps = 4;
         let downloadUrl = null;
         let downloadFileName = null;
 
-        document.getElementById('convertForm').addEventListener('submit', async function(e) {
+        const form = document.getElementById('convertForm');
+        const nextBtn = document.getElementById('nextBtn');
+        const prevBtn = document.getElementById('prevBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        const loadingSection = document.getElementById('loading-section');
+        const downloadSection = document.getElementById('download-section');
+        const downloadBtn = document.getElementById('download-btn');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        
+        const errorMessageDiv = document.getElementById('error-message');
+        const errorTextSpan = document.getElementById('error-text');
+        const summaryList = document.getElementById('summary-list');
+
+        // Step 2: 라디오 버튼 및 선택자 섹션 DOM 요소
+        const conversionScopeRadios = document.querySelectorAll('input[name="conversion_scope"]');
+        const selectorsSection = document.getElementById('selectors-section');
+        const contentSelectorInput = document.getElementById('content_selector');
+        const menuSelectorInput = document.getElementById('menu_selector');
+
+        function updateStepIndicator() {
+            document.querySelectorAll('.step-item').forEach((item, index) => {
+                const step = parseInt(item.dataset.step);
+                const circle = item.querySelector('.step-circle');
+                const title = item.querySelector('p');
+                const line = item.previousElementSibling && item.previousElementSibling.classList.contains('step-indicator-line') ? item.previousElementSibling : null;
+
+                circle.classList.remove('bg-primary', 'text-white', 'border-primary', 'bg-gray-300', 'text-gray-600', 'border-gray-300', 'bg-success', 'border-success');
+                title.classList.remove('text-primary', 'text-gray-500', 'font-medium', 'text-success');
+                
+                if (step < currentStep) { // Completed
+                    circle.classList.add('bg-success', 'text-white', 'border-success');
+                    title.classList.add('text-success', 'font-medium');
+                    if(line) line.classList.remove('bg-gray-300');
+                    if(line) line.classList.add('bg-success');
+                } else if (step === currentStep) { // Active
+                    circle.classList.add('bg-primary', 'text-white', 'border-primary');
+                    title.classList.add('text-primary', 'font-medium');
+                    if(line) line.classList.remove('bg-gray-300');
+                    if(line) line.classList.add('bg-primary');
+                } else { // Pending
+                    circle.classList.add('bg-gray-300', 'text-gray-600', 'border-gray-300');
+                    title.classList.add('text-gray-500');
+                    if(line) line.classList.remove('bg-primary', 'bg-success');
+                    if(line) line.classList.add('bg-gray-300');
+                }
+            });
+        }
+
+        function showStep(stepNumber) {
+            document.querySelectorAll('.wizard-step').forEach(step => step.classList.add('hidden'));
+            document.querySelector(`.wizard-step[data-step="${stepNumber}"]`).classList.remove('hidden');
+            updateStepIndicator();
+
+            prevBtn.classList.toggle('hidden', stepNumber === 1);
+            nextBtn.classList.toggle('hidden', stepNumber === totalSteps);
+            submitBtn.classList.toggle('hidden', stepNumber !== totalSteps);
+        }
+
+        function validateStep(stepNumber) {
+            const currentStepDiv = document.querySelector(`.wizard-step[data-step="${stepNumber}"]`);
+            const inputs = currentStepDiv.querySelectorAll('input[required], select[required]');
+            let isValid = true;
+            
+            inputs.forEach(input => {
+                const validationMsgDiv = currentStepDiv.querySelector(`[data-validate-for="${input.name}"]`);
+                // 현재 스텝이 2이고, 해당 input이 selectors-section 내에 있으며, selectors-section이 숨겨져 있다면 유효성 검사 건너뛰기
+                if (stepNumber === 2 && selectorsSection.classList.contains('hidden') && input.closest('#selectors-section')) {
+                    input.classList.remove('border-red-500');
+                    if(validationMsgDiv) validationMsgDiv.textContent = '';
+                    return; // 다음 input으로 넘어감
+                }
+
+                if (!input.value.trim() && input.required) { // .required 조건 추가
+                    input.classList.add('border-red-500');
+                    if(validationMsgDiv) validationMsgDiv.textContent = '이 필드는 필수입니다.';
+                    isValid = false;
+                } else if (input.type === 'url' && !input.value.match(/^(http|https)?:\/\//i)) {
+                    input.classList.add('border-red-500');
+                     if(validationMsgDiv) validationMsgDiv.textContent = '유효한 URL을 입력해주세요 (예: http:// 또는 https://).';
+                    isValid = false;
+                }
+                 else {
+                    input.classList.remove('border-red-500');
+                    if(validationMsgDiv) validationMsgDiv.textContent = '';
+                }
+            });
+            return isValid;
+        }
+        
+        function generateSummary() {
+            summaryList.innerHTML = ''; 
+            const formData = new FormData(form);
+            const summaryData = {
+                "URL": formData.get("url"),
+                "변환 영역": document.querySelector('input[name="conversion_scope"]:checked').parentElement.textContent.trim(),
+                "출력 형식": formData.get("output_format").toUpperCase(),
+                "페이지 병합": formData.get("merge_pages") === "true" ? "예" : "아니오",
+                "글꼴": document.getElementById('font_family').selectedOptions[0].text
+            };
+
+            if (!SCRIPT_DISABLE_TRANSLATION) {
+                summaryData["번역 옵션"] = document.getElementById('translator_type').selectedOptions[0].text;
+                summaryData["번역 언어"] = formData.get("translator_type") !== "none" ? document.getElementById('target_lang').selectedOptions[0].text : "해당 없음";
+            }
+
+            // "여러 페이지" 선택 시에만 선택자 정보 추가
+            if (formData.get("conversion_scope") === "multiple") {
+                summaryData["본문 선택자"] = formData.get("content_selector");
+                summaryData["메뉴 선택자"] = formData.get("menu_selector") || "입력 안함";
+            }
+
+            for (const [key, value] of Object.entries(summaryData)) {
+                const listItem = document.createElement('li');
+                listItem.innerHTML = `<span class="font-medium text-gray-900">${key}:</span> ${value}`;
+                summaryList.appendChild(listItem);
+            }
+        }
+
+        nextBtn.addEventListener('click', () => {
+            if (validateStep(currentStep)) {
+                currentStep++;
+                if (currentStep === totalSteps) {
+                    generateSummary();
+                }
+                showStep(currentStep);
+            }
+        });
+
+        prevBtn.addEventListener('click', () => {
+            currentStep--;
+            showStep(currentStep);
+        });
+
+        form.addEventListener('submit', async function(e) {
             e.preventDefault();
+            if (!validateStep(currentStep)) return;
+
+            loadingSection.classList.remove('hidden');
+            downloadSection.classList.add('hidden');
+            errorMessageDiv.classList.add('hidden');
+            submitBtn.disabled = true;
+            prevBtn.disabled = true;
             
-            const form = e.target;
-            const loading = document.querySelector('.loading');
-            const downloadSection = document.querySelector('.download-section');
-            const submitButton = form.querySelector('button[type="submit"]');
-            const progressBar = document.querySelector('.progress-bar');
-            const pageStatus = document.querySelector('.page-status');
-            
-            // UI 초기화
-            loading.style.display = 'block';
-            downloadSection.style.display = 'none';
-            submitButton.disabled = true;
             progressBar.style.width = '0%';
-            progressBar.textContent = '0%';
-            pageStatus.textContent = '처리된 페이지: 0/0';
+            progressText.textContent = '0% (0/0 페이지)';
             
             try {
                 const formData = new FormData(form);
@@ -206,28 +448,35 @@
                     const blob = await response.blob();
                     downloadUrl = window.URL.createObjectURL(blob);
                     
-                    // 파일 확장자 설정
-                    const format = formData.get('output_format');
-                    const extension = format === 'markdown' && formData.get('menu_selector') ? 'zip' : format;
+                    const outputFormat = formData.get('output_format');
+                    const mergePages = formData.get('merge_pages') === 'true';
+                    const menuSelector = formData.get('menu_selector');
+
+                    let extension = outputFormat;
+                    if (outputFormat === 'markdown' && !mergePages && menuSelector ) {
+                         extension = 'zip';
+                    }
                     downloadFileName = `converted_document.${extension}`;
                     
-                    // 다운로드 섹션 표시
-                    loading.style.display = 'none';
-                    downloadSection.style.display = 'block';
+                    loadingSection.classList.add('hidden');
+                    downloadSection.classList.remove('hidden');
                 } else {
                     const error = await response.text();
-                    alert('변환 중 오류가 발생했습니다: ' + error);
-                    loading.style.display = 'none';
+                    errorTextSpan.textContent = error;
+                    errorMessageDiv.classList.remove('hidden');
+                    loadingSection.classList.add('hidden');
                 }
             } catch (error) {
-                alert('오류가 발생했습니다: ' + error.message);
-                loading.style.display = 'none';
+                errorTextSpan.textContent = '네트워크 또는 알 수 없는 오류: ' + error.message;
+                errorMessageDiv.classList.remove('hidden');
+                loadingSection.classList.add('hidden');
             } finally {
-                submitButton.disabled = false;
+                submitBtn.disabled = false;
+                prevBtn.disabled = false;
             }
         });
 
-        function downloadFile() {
+        downloadBtn.addEventListener('click', function() {
             if (downloadUrl && downloadFileName) {
                 const a = document.createElement('a');
                 a.href = downloadUrl;
@@ -236,69 +485,120 @@
                 a.click();
                 window.URL.revokeObjectURL(downloadUrl);
                 a.remove();
+                // Optionally reset to first step
+                // currentStep = 1;
+                // showStep(currentStep);
+                // form.reset();
+                // loadTranslators(); 
+                // document.getElementById('target_lang').disabled = true;
             }
-        }
+        });
 
-        // 진행 상황 업데이트를 위한 EventSource 연결
         const eventSource = new EventSource('/progress');
         eventSource.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            const progressBar = document.querySelector('.progress-bar');
-            const pageStatus = document.querySelector('.page-status');
-            
             progressBar.style.width = `${data.progress}%`;
-            progressBar.textContent = `${data.progress}%`;
-            pageStatus.textContent = `처리된 페이지: ${data.current_page}/${data.total_pages}`;
-            
-            if (data.progress === 100) {
-                eventSource.close();
-            }
+            progressText.textContent = `${data.progress}% (${data.current_page}/${data.total_pages} 페이지)`;
+        };
+        eventSource.onerror = function(err) {
+            console.error("EventSource failed:", err);
         };
 
-        // 번역기 옵션 동적 로딩 및 언어 드롭다운 활성화/비활성화
         async function loadTranslators() {
+            if (SCRIPT_DISABLE_TRANSLATION) {
+                // 번역 비활성화 시 번역 옵션 및 언어 선택 UI를 숨기거나 비활성화 처리
+                const translatorTypeDiv = document.getElementById('translator_type')?.closest('.grid > div');
+                const targetLangDiv = document.getElementById('target_lang')?.closest('.grid > div');
+                if (translatorTypeDiv) translatorTypeDiv.style.display = 'none';
+                if (targetLangDiv) targetLangDiv.style.display = 'none';
+                return;
+            }
+            try {
             const res = await fetch('/api/available_translators');
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
             const translators = await res.json();
             const select = document.getElementById('translator_type');
             select.innerHTML = '';
-            // 항상 '번역하지 않음' 옵션 추가
+                
             const noneOpt = document.createElement('option');
             noneOpt.value = 'none';
             noneOpt.textContent = '번역하지 않음';
             select.appendChild(noneOpt);
+
             translators.forEach(opt => {
-                if (opt.value !== 'browser' && opt.value !== 'papago' && opt.value !== 'gpt' && opt.value !== 'deepl') return;
-                if (opt.disabled) {
-                    const option = document.createElement('option');
-                    option.value = '';
-                    option.textContent = 'API 키 설정 필요';
-                    option.disabled = true;
-                    select.appendChild(option);
-                } else {
+                    if (opt.value === 'none' && opt.label.includes('비활성화됨')) { // "번역하지 않음 (비활성화됨)" 옵션은 추가하지 않음
+                        return;
+                    }
+                    if (opt.value === 'none') return; 
                     const option = document.createElement('option');
                     option.value = opt.value;
-                    if (opt.value === 'browser') option.textContent = '내장 브라우저';
-                    else if (opt.value === 'papago') option.textContent = 'Papago API';
-                    else if (opt.value === 'gpt') option.textContent = 'GPT API';
-                    else if (opt.value === 'deepl') option.textContent = 'DeepL API';
+                    option.textContent = opt.label;
+                    if (opt.disabled) { 
+                        option.disabled = true;
+                        option.textContent += ' (API 키 필요)';
+                    }
                     select.appendChild(option);
+                });
+                select.value = 'none'; 
+            } catch (e) {
+                console.error("번역기 목록 로딩 실패:", e);
+                }
+        }
+
+        if (!SCRIPT_DISABLE_TRANSLATION) {
+            const translatorTypeElement = document.getElementById('translator_type');
+            if (translatorTypeElement) {
+                translatorTypeElement.addEventListener('change', function() {
+                    const targetLangElement = document.getElementById('target_lang');
+                    if (targetLangElement) {
+                        targetLangElement.disabled = (this.value === 'none');
+                    }
+                });
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            showStep(currentStep);
+            loadTranslators();
+        });
+
+        // Step 2 라디오 버튼 변경 감지
+        conversionScopeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'multiple') {
+                    selectorsSection.classList.remove('hidden');
+                    contentSelectorInput.required = true;
+                    menuSelectorInput.required = true; // 여러 페이지 선택 시 메뉴 선택자도 필수로 설정
+                } else {
+                    selectorsSection.classList.add('hidden');
+                    contentSelectorInput.required = false;
+                    menuSelectorInput.required = false;
+                    // 선택적: 단일 페이지 선택 시 기존 값 초기화
+                    // contentSelectorInput.value = ''; 
+                    // menuSelectorInput.value = '';
+                    // 에러 메시지도 초기화
+                    currentStepDiv = document.querySelector('.wizard-step[data-step="2"]');
+                    if(currentStepDiv) {
+                         [contentSelectorInput, menuSelectorInput].forEach(input => {
+                            input.classList.remove('border-red-500');
+                            const msgDiv = currentStepDiv.querySelector(`[data-validate-for="${input.name}"]`);
+                            if(msgDiv) msgDiv.textContent = '';
+                         });
+                    }
                 }
             });
+        });
+        // 초기 로드 시 라디오 버튼 상태에 따라 섹션 표시 결정 (checked된 옵션 기준)
+        const initialScope = document.querySelector('input[name="conversion_scope"]:checked').value;
+        if (initialScope === 'multiple') {
+            selectorsSection.classList.remove('hidden');
+            contentSelectorInput.required = true;
+            menuSelectorInput.required = true;
+        } else {
+            selectorsSection.classList.add('hidden');
+            contentSelectorInput.required = false;
+            menuSelectorInput.required = false;
         }
-        window.addEventListener('DOMContentLoaded', loadTranslators);
-
-        document.getElementById('translator_type').addEventListener('change', function() {
-            const langSelect = document.getElementById('target_lang');
-            if (this.value === 'none') {
-                langSelect.disabled = true;
-            } else {
-                langSelect.disabled = false;
-            }
-        });
-
-        document.getElementById('font_family').addEventListener('change', function() {
-            document.body.style.fontFamily = this.value;
-        });
     </script>
 </body>
-</html> 
+</html>

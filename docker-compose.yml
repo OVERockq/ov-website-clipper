@@ -4,10 +4,11 @@ services:
   web:
     build: ./app
     ports:
-      - "5005:5000"
+      - "5005:5001"
     volumes:
       - ./app/templates:/app/templates
       - ./uploads:/tmp/uploads
     environment:
       - PYTHONUNBUFFERED=1
-    restart: unless-stopped 
+      - DISABLE_TRANSLATION=true
+    restart: unless-stopped
