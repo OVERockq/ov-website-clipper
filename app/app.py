@@ -9,8 +9,12 @@ import queue
 import zipfile
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+import logging # Add logging import
 
 app = Flask(__name__)
+
+# Configure basic logging
+logging.basicConfig(level=logging.DEBUG)
 
 # Translations
 translations = {
@@ -50,7 +54,7 @@ translations = {
         'font_family_label': "글꼴 (PDF/DOCX 용)",
         'confirm_and_convert_title': "Step 4: 확인 및 변환",
         'summary_title': "입력 정보 요약:",
-        'summary_help': "정보가 정확한지 확인 후 \\"변환 시작\\" 버튼을 눌러주세요.",
+        'summary_help': '정보가 정확한지 확인 후 "변환 시작" 버튼을 눌러주세요.',
         'loading_text': "변환 중입니다. 잠시 기다려주세요...",
         'progress_text_template': "{progress}% ({current_page}/{total_pages} 페이지)",
         'conversion_complete_title': "변환이 완료되었습니다!",
@@ -108,7 +112,7 @@ translations = {
         'font_family_label': "Font (for PDF/DOCX)",
         'confirm_and_convert_title': "Step 4: Confirm and Convert",
         'summary_title': "Summary of Input Information:",
-        'summary_help': "Please verify the information is correct, then press the \\"Start Conversion\\" button.",
+        'summary_help': 'Please verify the information is correct, then press the "Start Conversion" button.',
         'loading_text': "Converting. Please wait a moment...",
         'progress_text_template': "{progress}% ({current_page}/{total_pages} pages)",
         'conversion_complete_title': "Conversion Complete!",
@@ -199,7 +203,16 @@ def update_progress(current, total):
 @app.route('/')
 def index():
     lang_code = get_locale()
-    trans = translations[lang_code]
+    app.logger.debug(f"Selected lang_code: {lang_code}")
+    # Ensure trans is always a dictionary, even if lang_code is somehow invalid (should not happen with current get_locale)
+    trans = translations.get(lang_code, translations.get('en', {})) 
+    app.logger.debug(f"Translations for lang_code '{lang_code}': {type(trans)} - Keys (first few): {list(trans.keys())[:5] if trans else 'None'}")
+    
+    if not trans:
+        app.logger.error(f"Critical: Translations not found for lang_code '{lang_code}'. Fallback did not work.")
+        # Fallback to English or an empty dict to prevent UndefinedError, though the page will be broken.
+        trans = translations.get('en', {}) # Or provide a minimal default structure
+
     return render_template(
         'index.html', 
         disable_translation=DISABLE_TRANSLATION,

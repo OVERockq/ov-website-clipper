@@ -62,6 +62,8 @@ class WebToEbook:
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--disable-software-rasterizer')
         
         # 'translator_type'이 'browser'일 때 Chrome 내장 번역 기능 활성화
         if self.translator_type == 'browser' and self.target_lang:
