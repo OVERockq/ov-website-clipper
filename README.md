@@ -93,6 +93,41 @@
   - `RATE_LIMIT_PER_HOUR`: 시간당 총 요청 제한 (기본값: 50)
   - `RATE_LIMIT_CONVERT_PER_MINUTE`: 분당 변환 요청 제한 (기본값: 10)
 
+## 환경 설정
+
+### 광고 설정
+Google AdSense를 사용하기 위해서는 다음 환경 변수를 설정해야 합니다:
+
+1. `.env` 파일 생성:
+```bash
+# .env 파일 생성
+touch .env
+```
+
+2. `.env` 파일에 다음 내용 추가:
+```env
+# Google AdSense Configuration
+AD_CLIENT_ID=ca-pub-XXXXXXXXXXXXXXXX  # 실제 AdSense 클라이언트 ID로 교체
+
+# Translation Settings
+DISABLE_TRANSLATION=true
+
+# Rate Limiting
+RATE_LIMIT_PER_DAY=200
+RATE_LIMIT_PER_HOUR=50
+RATE_LIMIT_CONVERT_PER_MINUTE=10
+```
+
+3. Docker Compose 실행:
+```bash
+docker-compose up -d
+```
+
+### 환경 변수 설명
+- `AD_CLIENT_ID`: Google AdSense 클라이언트 ID (예: ca-pub-XXXXXXXXXXXXXXXX)
+- `DISABLE_TRANSLATION`: 번역 기능 비활성화 (true/false)
+- `RATE_LIMIT_*`: API 요청 제한 설정
+
 ## 사용 방법
 
 1.  웹 브라우저에서 애플리케이션에 접속합니다 (Docker 사용 시 `http://localhost:5005`).

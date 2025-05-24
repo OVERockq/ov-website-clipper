@@ -4,13 +4,10 @@ FROM python:3.9-slim
 ARG TARGETARCH=amd64
 # Build argument for Gunicorn workers
 ARG GUNICORN_WORKERS=2
-# Build argument for ChromeDriver version.
-# IMPORTANT: You MUST find the version of google-chrome-stable that gets installed
-# for your TARGETARCH and then set this ARG to the corresponding ChromeDriver version.
-# You can typically find compatible ChromeDriver versions here:
-# https://googlechromelabs.github.io/chrome-for-testing/
-# Example: If 'google-chrome-stable' installs version 126.0.6478.X, you'd use a CHROME_DRIVER_VERSION like 126.0.6478.126
-ARG CHROME_DRIVER_VERSION="126.0.6478.126" # Update this to match your Chrome version!
+
+# Fixed Chrome and ChromeDriver version (Selenium 4.x 호환 버전)
+ENV CHROME_VERSION="136.0.7103.113"
+ENV CHROME_DRIVER_VERSION="136.0.7103.113"
 
 # System environment variable to reflect the target architecture for any runtime scripts if needed
 ENV APP_TARGETARCH=${TARGETARCH}
@@ -35,13 +32,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libexpat1 \
     libgbm1 \
     libasound2 \
-    # Dependencies for WeasyPrint (ensure these are sufficient or add more if needed)
+    # Dependencies for WeasyPrint
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libgdk-pixbuf2.0-0 \
     libffi-dev \
     shared-mime-info \
     libcairo2 \
+    jq \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome and ChromeDriver based on TARGETARCH
@@ -54,40 +53,28 @@ RUN \
     # Install Chrome or Chromium based on TARGETARCH
     echo "BUILDING FOR TARGETARCH: ${TARGETARCH}" && \
     if [ "${TARGETARCH}" = "amd64" ]; then \
-        apt-get install -y --no-install-recommends google-chrome-stable && \
-        CHROME_VERSION_FULL=$(google-chrome-stable --version) && \
-        echo "Installed Chrome version: $CHROME_VERSION_FULL (Note: ChromeDriver version ARG must match this!)" && \
-        echo "Attempting to install ChromeDriver version: $CHROME_DRIVER_VERSION (set via ARG)" && \
-        if [ -z "$CHROME_DRIVER_VERSION" ]; then \
-            echo "Error: CHROME_DRIVER_VERSION ARG is not set for amd64." && exit 1; \
-        fi && \
-        CHROME_DRIVER_URL="https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/${CHROME_DRIVER_VERSION}/linux64/chromedriver-linux64.zip" && \
-        CHROME_DRIVER_EXTRACT_PATH="chromedriver-linux64/chromedriver" && \
-        wget -q "${CHROME_DRIVER_URL}" -O chromedriver.zip && \
+        # Install specific version of Chrome \
+        wget -q "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" -O chrome.deb && \
+        dpkg -i chrome.deb || true && \
+        apt-get install -f -y && \
+        rm chrome.deb && \
+        # Pin Chrome version \
+        echo "google-chrome-stable hold" | dpkg --set-selections && \
+        # Install matching ChromeDriver version \
+        wget -q "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" -O chromedriver.zip && \
         unzip chromedriver.zip && \
-        mv "${CHROME_DRIVER_EXTRACT_PATH}" /usr/local/bin/chromedriver && \
+        mv chromedriver-linux64/chromedriver /usr/local/bin/chromedriver && \
         chmod +x /usr/local/bin/chromedriver && \
-        echo "Manually installed amd64 ChromeDriver version:" && \
-        chromedriver --version && \
-        rm -rf chromedriver.zip chromedriver-* ; \
+        rm -rf chromedriver.zip chromedriver-linux64 && \
+        echo "Installed ChromeDriver version: ${CHROME_DRIVER_VERSION}" ; \
     elif [ "${TARGETARCH}" = "arm64" ]; then \
-        apt-get install -y --no-install-recommends chromium chromium-driver || \
-            (echo "Failed to install chromium and chromium-driver, trying older chromium-browser" && \
-             apt-get install -y --no-install-recommends chromium-browser chromium-driver) && \
-        CHROME_VERSION_FULL=$(chromium --version || chromium-browser --version) && \
-        echo "Installed Chromium version for arm64 (via apt): $CHROME_VERSION_FULL" && \
-        # Ensure the apt-installed chromedriver is used and report its version
-        # Typically, chromium-driver from apt installs to /usr/bin/chromedriver
-        if [ -f /usr/bin/chromedriver ]; then \
-            # If /usr/local/bin/chromedriver exists from a previous bad run, remove it
-            rm -f /usr/local/bin/chromedriver && \
-            ln -s /usr/bin/chromedriver /usr/local/bin/chromedriver && \
-            echo "Using arm64 chromium-driver from apt. Version:" && \
-            chromedriver --version ; \
-        else \
-            echo "Error: chromium-driver not found at /usr/bin/chromedriver for arm64 after apt install." && exit 1; \
-        fi && \
-        echo "CHROME_DRIVER_VERSION ARG (${CHROME_DRIVER_VERSION}) is ignored for arm64 as apt provides a matched version." ; \
+        # For arm64, use chromium from apt repository \
+        apt-get install -y --no-install-recommends chromium chromium-driver && \
+        # Pin chromium version \
+        echo "chromium hold" | dpkg --set-selections && \
+        echo "chromium-driver hold" | dpkg --set-selections && \
+        # Create symlink for chromedriver \
+        ln -sf /usr/bin/chromedriver /usr/local/bin/chromedriver ; \
     else \
         echo "Unsupported TARGETARCH for Chrome/Chromium installation: ${TARGETARCH}" && exit 1; \
     fi && \
@@ -107,12 +94,27 @@ COPY . .
 # Create upload directory
 RUN mkdir -p /tmp/uploads
 
+# Add cleanup script
+COPY cleanup.py /app/cleanup.py
+RUN chmod +x /app/cleanup.py
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5001/health || exit 1
+
 # Expose port for Gunicorn
 EXPOSE 5001
 
 # Force Gunicorn with absolute path and ensure logs go to stdout/stderr
 ENV PYTHONPATH=/app:$PYTHONPATH
-# CMD ["sh", "-c", "/usr/local/bin/gunicorn --bind 0.0.0.0:5001 --workers 2 --log-level debug --access-logfile - --error-logfile - app:app"]
 
-ENTRYPOINT ["/usr/local/bin/gunicorn"]
+# Create startup script
+RUN echo '#!/bin/sh\n\
+# Start cleanup script in background\n\
+python /app/cleanup.py &\n\
+# Start Gunicorn\n\
+exec /usr/local/bin/gunicorn "$@"\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+ENTRYPOINT ["/app/start.sh"]
 CMD ["--bind", "0.0.0.0:5001", "--workers", "2", "--log-level", "debug", "--access-logfile", "-", "--error-logfile", "-", "app:app"] 

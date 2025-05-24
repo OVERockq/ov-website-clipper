@@ -10,6 +10,11 @@ import zipfile
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging # Add logging import
+import re
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
 app = Flask(__name__)
 
@@ -61,6 +66,8 @@ translations = {
         'download_prompt': "아래 버튼으로 다운로드하세요.",
         'download_button': "다운로드",
         'error_prefix': "오류:",
+        'error_title': "변환 실패",
+        'retry_button': "다시 시도",
         'previous_button': "이전",
         'next_button': "다음",
         'submit_button': "변환 시작",
@@ -119,6 +126,8 @@ translations = {
         'download_prompt': "Download using the button below.",
         'download_button': "Download",
         'error_prefix': "Error:",
+        'error_title': "Conversion Failed",
+        'retry_button': "Try Again",
         'previous_button': "Previous",
         'next_button': "Next",
         'submit_button': "Start Conversion",
@@ -164,16 +173,15 @@ if not DISABLE_TRANSLATION:
     DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
 
 # 광고 ID 환경변수
-AD_CLIENT_ID_RIGHT = os.environ.get('AD_CLIENT_ID_RIGHT')
-AD_SLOT_ID_RIGHT = os.environ.get('AD_SLOT_ID_RIGHT')
-AD_CLIENT_ID_BOTTOM = os.environ.get('AD_CLIENT_ID_BOTTOM')
-AD_SLOT_ID_BOTTOM = os.environ.get('AD_SLOT_ID_BOTTOM')
+AD_CLIENT_ID = os.environ.get('AD_CLIENT_ID')
 
 # 진행 상황을 저장할 전역 변수
 progress_data = {
     'current_page': 0,
     'total_pages': 0,
-    'progress': 0
+    'progress': 0,
+    'completed': False,
+    'error': None
 }
 
 # Flask-Limiter 설정
@@ -192,13 +200,15 @@ limiter = Limiter(
 # 진행 상황 업데이트를 위한 큐
 progress_queue = queue.Queue()
 
-def update_progress(current, total):
+def update_progress(current, total, error=None):
     """진행 상황을 업데이트합니다."""
     progress = int((current / total) * 100) if total > 0 else 0
     progress_data['current_page'] = current
     progress_data['total_pages'] = total
     progress_data['progress'] = progress
-    progress_queue.put(progress_data)
+    progress_data['completed'] = current >= total if total > 0 else False
+    progress_data['error'] = error
+    progress_queue.put(progress_data.copy())
 
 @app.route('/')
 def index():
@@ -216,10 +226,7 @@ def index():
     return render_template(
         'index.html', 
         disable_translation=DISABLE_TRANSLATION,
-        ad_client_id_right=AD_CLIENT_ID_RIGHT,
-        ad_slot_id_right=AD_SLOT_ID_RIGHT,
-        ad_client_id_bottom=AD_CLIENT_ID_BOTTOM,
-        ad_slot_id_bottom=AD_SLOT_ID_BOTTOM,
+        ad_client_id=AD_CLIENT_ID,
         rate_limit_per_day=RATE_LIMIT_PER_DAY,
         rate_limit_per_hour=RATE_LIMIT_PER_HOUR,
         rate_limit_convert_per_minute=RATE_LIMIT_CONVERT_PER_MINUTE,
@@ -250,149 +257,162 @@ def available_translators():
 def progress():
     """Server-Sent Events 엔드포인트"""
     def generate():
-        while True:
-            try:
-                data = progress_queue.get(timeout=15)  # 타임아웃을 줄여서 더 자주 체크
-                yield f"data: {json.dumps(data)}\n\n"
-            except queue.Empty:
-                # 연결 유지를 위해 주석(comment) 형태의 keep-alive 메시지를 보냅니다.
-                yield ": keepalive\n\n"
-                # 루프를 계속하여 다음 메시지를 기다립니다.
-                # 만약 특정 조건에서 완전히 종료해야 한다면, 그 조건을 명시적으로 처리해야 합니다.
-                # 예를 들어, 변환 작업 완료 후 특정 신호를 받으면 break 하도록 할 수 있습니다.
-                # 현재는 무한 루프로 두어 클라이언트가 연결을 유지하도록 합니다.
-                # 실제 프로덕션 환경에서는 더 정교한 연결 관리 로직이 필요할 수 있습니다.
-                continue 
+        try:
+            while True:
+                try:
+                    data = progress_queue.get(timeout=5)  # 타임아웃 감소
+                    if data.get('completed') or data.get('error'):
+                        yield f"data: {json.dumps(data)}\n\n"
+                        break
+                    yield f"data: {json.dumps(data)}\n\n"
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+        except GeneratorExit:
+            # 클라이언트 연결 종료 시 정리
+            app.logger.info("Client disconnected from progress stream")
+        except Exception as e:
+            app.logger.error(f"Error in progress stream: {str(e)}")
+            yield f"data: {json.dumps({'error': 'Progress stream error'})}\n\n"
     return Response(generate(), mimetype='text/event-stream')
 
+def create_driver():
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--disable-software-rasterizer')
+        
+        # ChromeDriver 자동 설치 및 버전 관리
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        return driver
+    except Exception as e:
+        app.logger.error(f"Driver creation error: {str(e)}")
+        raise
+
 @app.route('/convert', methods=['POST'])
-@limiter.limit(f"{RATE_LIMIT_CONVERT_PER_MINUTE} per minute") # 변환 요청에 대한 추가 제한
+@limiter.limit(f"{RATE_LIMIT_CONVERT_PER_MINUTE} per minute")
 def convert():
     output_path = None
     try:
         url = request.form['url']
-        conversion_scope = request.form.get('conversion_scope', 'single') # 'single' or 'multiple'
+        conversion_scope = request.form.get('conversion_scope', 'single')
         
         content_selector = request.form.get('content_selector', '')
         menu_selector = request.form.get('menu_selector', '')
 
         if conversion_scope == 'single':
-            # 단일 페이지 모드일 경우, content_selector를 특별한 값으로 설정하거나 비워둠
-            # web_to_ebook.py에서 이 값을 보고 자동 처리하도록 유도
-            content_selector = "__AUTO_SINGLE_PAGE__" # 예시 특별 값
-            menu_selector = None # 단일 페이지 모드에서는 메뉴 선택자 사용 안함
-        # 'multiple' 모드에서는 사용자가 입력한 값을 그대로 사용
+            content_selector = "__AUTO_SINGLE_PAGE__"
+            menu_selector = None
 
         output_format = request.form['output_format']
         target_lang = request.form.get('target_lang', '')
         merge_pages = request.form.get('merge_pages', 'true').lower() == 'true'
         translator_type = request.form.get('translator_type', 'none')
         font_family = request.form.get('font_family', 'Noto Sans KR')
+
+        # 입력값 검증
+        if not url or not url.startswith(('http://', 'https://')):
+            raise ValueError("유효한 URL을 입력해주세요.")
+
+        driver = create_driver()
+
         converter = WebToEbook(
             title="",
             base_url=url,
             content_selector=content_selector,
             menu_selector=menu_selector,
             translator_type=translator_type,
-            target_lang=target_lang, # target_lang 인자 추가
+            target_lang=target_lang,
             papago_id=PAPAGO_CLIENT_ID,
             papago_secret=PAPAGO_CLIENT_SECRET,
             openai_key=OPENAI_API_KEY,
             deepl_key=DEEPL_API_KEY,
             font_family=font_family
         )
+
         output_dir = '/tmp/uploads'
         os.makedirs(output_dir, exist_ok=True)
         
-        # Markdown 확장자를 .md로 통일
         actual_output_format_extension = "md" if output_format.lower() == "markdown" else output_format
-        temp_filename = f"ebook_conversion_placeholder.{actual_output_format_extension}"
+        temp_filename = f"ebook_conversion_{int(time.time())}.{actual_output_format_extension}"
         output_path = os.path.join(output_dir, temp_filename)
-
-        final_download_name = "downloaded_file"
 
         def conversion_process_wrapper():
             nonlocal output_path
-            nonlocal final_download_name
-            nonlocal actual_output_format_extension # 함수 내에서 사용하기 위해 nonlocal 선언
             try:
-                # process 메소드 호출 시 target_lang 인자 제거
-                converter.process(output_path=output_path, output_format=output_format) # process에는 원래 output_format 전달
-                
-                # 파일 시스템 동기화를 위한 짧은 대기 시간 추가
-                time.sleep(0.5) 
+                converter.process(output_path=output_path, output_format=output_format)
+                time.sleep(0.5)  # 파일 시스템 동기화 대기
 
                 if not os.path.exists(output_path):
-                    app.logger.warning(f"os.path.exists 검사 실패: {output_path}. 파일이 실제로 생성되었는지 다시 확인합니다.")
-                    # 만약 파일이 실제로 생성되었지만 exists가 즉시 True를 반환하지 않는 경우를 대비
-                    # 이 부분은 근본적인 해결책은 아니지만, 간헐적인 파일 시스템 지연 문제에 대한 임시 방편이 될 수 있음
-                    # 실제로는 converter.process가 성공/실패 여부를 명확히 반환하는 것이 좋음
-                    if not os.path.exists(output_path): # 한 번 더 검사
-                        raise FileNotFoundError(f"변환된 파일이 지정된 경로에 생성되지 않았습니다: {output_path}")
+                    raise FileNotFoundError("변환된 파일이 생성되지 않았습니다.")
 
-                # 파일명 생성을 위한 URL 정제
+                # 파일명 생성
                 base_filename_url = url.replace("https://", "").replace("http://", "")
-                # 특수문자를 '_'로 치환 (슬래시 포함)
-                safe_base_filename = "".join(c if c.isalnum() else '_' for c in base_filename_url)
-                # 연속된 '_'를 하나로 줄임
-                safe_base_filename = re.sub(r"__+", "_", safe_base_filename).strip('_')
+                safe_base_filename = re.sub(r"[^a-zA-Z0-9-_]", "_", base_filename_url)
+                safe_base_filename = re.sub(r"_+", "_", safe_base_filename).strip('_')
 
-                # 웹페이지 타이틀이 있으면 사용, 없으면 URL 기반 이름 사용
                 doc_title = converter.title if converter.title else ""
                 if doc_title:
-                    safe_title_from_page = "".join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in doc_title).rstrip().replace(' ', '_')
-                    # 웹페이지 타이틀과 URL 기반 이름을 조합하거나, 더 적절한 것을 선택할 수 있습니다.
-                    # 여기서는 URL 기반을 우선으로 하고, 웹페이지 타이틀이 있으면 덧붙이는 방식은 너무 길어질 수 있으므로
-                    # URL 기반으로 생성된 이름을 사용합니다. 만약 웹페이지 타이틀을 우선하고 싶다면 아래 주석을 해제하고 로직 수정.
-                    # final_base_name = safe_title_from_page if safe_title_from_page else safe_base_filename
-                    final_base_name = safe_base_filename if safe_base_filename else "converted_document"
+                    safe_title = re.sub(r"[^a-zA-Z0-9-_ ]", "", doc_title).strip().replace(" ", "_")
+                    final_base_name = safe_title if safe_title else safe_base_filename
                 else:
-                    final_base_name = safe_base_filename if safe_base_filename else "converted_document"
+                    final_base_name = safe_base_filename
 
-
-                # Add language suffix if translation was performed
-                # 다운로드 파일명 확장자도 .md로 통일
                 download_extension = "md" if output_format.lower() == "markdown" else output_format
-                if target_lang and translator_type != 'none': # target_lang은 convert 함수의 지역 변수
+                if target_lang and translator_type != 'none':
                     final_download_name = f"{final_base_name}_{target_lang}.{download_extension}"
                 else:
                     final_download_name = f"{final_base_name}.{download_extension}"
 
+                return final_download_name
+
             except Exception as e:
-                app.logger.error(f"변환 스레드 내 오류: {repr(e)}")
-                output_path = None
+                app.logger.error(f"Conversion error: {str(e)}")
+                update_progress(0, 0, str(e))
                 raise
-                
+
         thread = Thread(target=conversion_process_wrapper)
         thread.start()
         thread.join()
-        
+
         if output_path and os.path.exists(output_path):
             try:
+                final_download_name = conversion_process_wrapper()
                 response = send_file(
                     output_path,
                     as_attachment=True,
                     download_name=final_download_name
                 )
                 return response
-            finally:
-                # 파일 전송 후 임시 파일 삭제
-                if os.path.exists(output_path):
-                    try:
-                        os.remove(output_path)
-                        app.logger.info(f"임시 파일 삭제 완료: {output_path}")
-                    except Exception as e_remove:
-                        app.logger.error(f"임시 파일 삭제 중 오류 발생: {output_path}, {e_remove}")
+            except Exception as e:
+                app.logger.error(f"File sending error: {str(e)}")
+                raise
         else:
-            app.logger.error(f"파일 생성 실패 또는 최종 경로 없음. output_path: {output_path}")
-            return '파일 생성 실패', 500
+            raise FileNotFoundError("변환된 파일을 찾을 수 없습니다.")
+
     except Exception as e:
-        # output_path가 None이 아니고, 예외 발생 전 파일이 생성되었을 수 있으므로 여기서도 삭제 시도
+        app.logger.error(f"Conversion endpoint error: {str(e)}")
+        error_message = "변환 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+        return jsonify({'error': error_message}), 500
+    finally:
+        if 'driver' in locals():
+            driver.quit()
+        # 임시 파일 정리
         if output_path and os.path.exists(output_path):
             try:
                 os.remove(output_path)
-                app.logger.info(f"오류 발생으로 인한 임시 파일 삭제: {output_path}")
-            except Exception as e_remove_err:
-                app.logger.error(f"오류 발생 후 임시 파일 삭제 중 오류: {output_path}, {e_remove_err}")
-        app.logger.error(f"/convert 엔드포인트 오류: {repr(e)}")
-        return str(e), 500
+                app.logger.info(f"Temporary file removed: {output_path}")
+            except Exception as e:
+                app.logger.error(f"Failed to remove temporary file: {str(e)}")
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint for Docker container."""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': time.time()
+    }), 200

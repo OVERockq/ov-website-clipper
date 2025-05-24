@@ -6,9 +6,9 @@ services:
       args:
         # Use environment variables for TARGETARCH and GUNICORN_WORKERS, with defaults
         # Supported TARGETARCH values: amd64, arm64
-        TARGETARCH: ${DOCKER_TARGETARCH:-arm64}
+        TARGETARCH: ${DOCKER_TARGETARCH:-amd64}
         GUNICORN_WORKERS: ${DOCKER_GUNICORN_WORKERS:-2}
-    image: ov-website-clipper:${DOCKER_TARGETARCH:-arm64} # Tag image with architecture
+    image: ov-website-clipper:${DOCKER_TARGETARCH:-amd64} # Tag image with architecture
     ports:
       - "5005:5001"
     volumes:
@@ -16,15 +16,22 @@ services:
       - ./uploads:/tmp/uploads
     environment:
       - PYTHONUNBUFFERED=1
-      - DISABLE_TRANSLATION=true # 번역기능 비활성화
-      - RATE_LIMIT_PER_DAY=20 # 하루 요청 제한
-      - RATE_LIMIT_PER_HOUR=5 # 시간당 요청 제한
-      - RATE_LIMIT_CONVERT_PER_MINUTE=2 # 분당 변환 요청 제한
-      - AD_CLIENT_ID_RIGHT=ca-pub-YOUR_RIGHT_AD_CLIENT_ID # 여기에 실제 오른쪽 광고 클라이언트 ID 입력
-      - AD_SLOT_ID_RIGHT=YOUR_RIGHT_AD_SLOT_ID # 여기에 실제 오른쪽 광고 슬롯 ID 입력
-      - AD_CLIENT_ID_BOTTOM=ca-pub-YOUR_BOTTOM_AD_CLIENT_ID # 여기에 실제 하단 광고 클라이언트 ID 입력
-      - AD_SLOT_ID_BOTTOM=YOUR_BOTTOM_AD_SLOT_ID # 여기에 실제 하단 광고 슬롯 ID 입력
+      - DISABLE_TRANSLATION=${DISABLE_TRANSLATION:-true}
+      - RATE_LIMIT_PER_DAY=${RATE_LIMIT_PER_DAY:-200}
+      - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-50}
+      - RATE_LIMIT_CONVERT_PER_MINUTE=${RATE_LIMIT_CONVERT_PER_MINUTE:-10}
+      - AD_CLIENT_ID=${AD_CLIENT_ID:-ca-pub-XXXXXXXXXXXXXXXX}  # Google AdSense Client ID
+      - PAPAGO_CLIENT_ID=${PAPAGO_CLIENT_ID:-}
+      - PAPAGO_CLIENT_SECRET=${PAPAGO_CLIENT_SECRET:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEEPL_API_KEY=${DEEPL_API_KEY:-}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - npm_shared
 
