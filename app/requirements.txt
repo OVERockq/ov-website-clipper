@@ -2,11 +2,10 @@ flask==2.3.3
 selenium>=4.0.0
 beautifulsoup4==4.12.2
 ebooklib==0.18
-deep-translator==1.11.4
 tqdm==4.66.1
 python-docx==1.0.1
 markdown==3.5.1
-weasyprint==60.1
+weasyprint==65.1
 requests==2.31.0
 webdriver-manager>=4.0.0
 Pillow==10.1.0
@@ -15,3 +14,4 @@ html5lib==1.1
 lxml==4.9.3
 Flask-Limiter
 gunicorn==20.1.0
+googletrans==4.0.0rc1

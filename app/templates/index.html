@@ -66,6 +66,9 @@
         @keyframes spinner {
             to { transform: rotate(360deg); }
         }
+        .lang-toggle-btn {
+            transition: background 0.2s, color 0.2s;
+        }
         .lang-switcher a {
             @apply px-3 py-1 text-sm rounded-md;
         }
@@ -75,21 +78,26 @@
         .lang-switcher a:not(.active) {
             @apply text-gray-600 hover:bg-gray-200;
         }
+        /* Step Indicator: revert to simple Tailwind-based layout */
+        /* (No custom .step-item or .step-item p styles) */
     </style>
 </head>
-<body class="bg-gray-100" data-disable-translation="{{ disable_translation }}">
+<body class="bg-gray-100" data-translation-enabled="{{ 'true' if translation_enabled else 'false' }}">
     <div class="flex flex-col justify-center min-h-screen p-4">
         <!-- Main Content Area -->
         <div class="bg-white shadow-xl rounded-lg p-6 sm:p-10 w-full max-w-3xl mx-auto">
-            <header class="mb-8 sm:mb-10">
+            <!-- Language Toggle (위쪽 오른쪽) -->
+            <div class="flex justify-end items-center mb-2">
+                <div class="inline-flex rounded-full bg-gray-100 p-1 shadow">
+                    <a href="/?lang=ko" class="lang-toggle-btn px-4 py-1 rounded-full font-semibold transition {{ 'bg-primary text-white' if current_lang == 'ko' else 'text-gray-600 hover:bg-gray-200' }}">한국어</a>
+                    <a href="/?lang=en" class="lang-toggle-btn px-4 py-1 rounded-full font-semibold transition {{ 'bg-primary text-white' if current_lang == 'en' else 'text-gray-600 hover:bg-gray-200' }}">English</a>
+                </div>
+            </div>            
+            <header class="mb-8 sm:mb-10" style="margin-bottom: calc(2rem + 0.5em);">
                 <div class="flex justify-between items-center mb-2">
-                    <h1 class="text-3xl sm:text-4xl font-bold text-center text-dark flex-grow">
+                    <h1 class="text-3xl sm:text-4xl font-bold text-center text-dark flex-grow" style="margin-top:1.5em;">
                         <span class="text-primary">{{ translations.logo_text_part1 }}</span><span class="text-gray-600">{{ translations.logo_text_part2 }}</span> <i class="fas fa-wand-magic-sparkles text-primary"></i>
                     </h1>
-                    <div class="lang-switcher flex space-x-1">
-                        <a href="/?lang=ko" class="{{ 'active' if current_lang == 'ko' else '' }}">한국어</a>
-                        <a href="/?lang=en" class="{{ 'active' if current_lang == 'en' else '' }}">English</a>
-                    </div>
                 </div>
                 <p class="text-center text-secondary text-sm sm:text-base">
                     {{ translations.header_subtitle }}
@@ -97,33 +105,32 @@
             </header>
             
             <!-- Step Indicator -->
-            <div class="flex items-center mb-10">
-                <div class="step-item flex-1 flex flex-col items-center" data-step="1">
+            <div class="flex items-center mb-2">
+                <div class="step-item flex flex-col items-center flex-1" data-step="1">
                     <div class="step-circle w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold z-10 bg-primary text-white border-2 border-primary transition-all duration-300">1</div>
-                    <p class="mt-2 text-xs sm:text-sm font-medium text-primary transition-all duration-300">{{ translations.step1_title }}</p>
+                    <p class="mt-2 text-xs sm:text-sm font-medium text-primary text-center">{{ translations.step1_title }}</p>
                 </div>
                 <div class="step-indicator-line bg-gray-300 transition-all duration-300"></div>
-                <div class="step-item flex-1 flex flex-col items-center" data-step="2">
+                <div class="step-item flex flex-col items-center flex-1" data-step="2">
                     <div class="step-circle w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold z-10 bg-gray-300 text-gray-600 border-2 border-gray-300 transition-all duration-300">2</div>
-                    <p class="mt-2 text-xs sm:text-sm text-gray-500 transition-all duration-300">{{ translations.step2_title }}</p>
+                    <p class="mt-2 text-xs sm:text-sm text-gray-500 text-center">{{ translations.step2_title }}</p>
                 </div>
                 <div class="step-indicator-line bg-gray-300 transition-all duration-300"></div>
-                <div class="step-item flex-1 flex flex-col items-center" data-step="3">
+                <div class="step-item flex flex-col items-center flex-1" data-step="3">
                     <div class="step-circle w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold z-10 bg-gray-300 text-gray-600 border-2 border-gray-300 transition-all duration-300">3</div>
-                    <p class="mt-2 text-xs sm:text-sm text-gray-500 transition-all duration-300">{{ translations.step3_title }}</p>
+                    <p class="mt-2 text-xs sm:text-sm text-gray-500 text-center">{{ translations.step3_title }}</p>
                 </div>
                 <div class="step-indicator-line bg-gray-300 transition-all duration-300"></div>
-                <div class="step-item flex-1 flex flex-col items-center" data-step="4">
+                <div class="step-item flex flex-col items-center flex-1" data-step="4">
                     <div class="step-circle w-10 h-10 rounded-full flex items-center justify-center text-lg font-semibold z-10 bg-gray-300 text-gray-600 border-2 border-gray-300 transition-all duration-300">4</div>
-                    <p class="mt-2 text-xs sm:text-sm text-gray-500 transition-all duration-300">{{ translations.step4_title }}</p>
+                    <p class="mt-2 text-xs sm:text-sm text-gray-500 text-center">{{ translations.step4_title }}</p>
                 </div>
             </div>
 
             <div class="container mx-auto px-4 py-8">
                 <div class="max-w-3xl mx-auto">
                     <div class="text-center mb-8">
-                        <h1 class="text-4xl font-bold mb-4" data-i18n="title">웹페이지를 전자책으로 변환</h1>
-                        <p class="text-lg text-gray-600" data-i18n="subtitle">웹페이지를 EPUB, PDF, Markdown 형식으로 변환하세요</p>
+
                         <p class="mt-1">
                             {{ translations.footer_rate_limit_info.replace('{rate_limit_convert_per_minute}', rate_limit_convert_per_minute).replace('{rate_limit_per_hour}', rate_limit_per_hour).replace('{rate_limit_per_day}', rate_limit_per_day) }}
                         </p>
@@ -189,16 +196,60 @@
                         <!-- Step 3: 포맷 및 번역 설정 -->
                         <div class="wizard-step hidden" data-step="3">
                             <h2 class="text-xl font-semibold text-gray-700 mb-6">Step 3: {{ translations.step3_title }}</h2>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">번역 여부 선택</label>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                        <input type="radio" name="do_translate" id="do_translate_no" value="no" class="h-4 w-4 text-blue-600" checked>
+                                        <span class="ml-3">아니오</span>
+                                    </label>
+                                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                        <input type="radio" name="do_translate" id="do_translate_yes" value="yes" class="h-4 w-4 text-blue-600">
+                                        <span class="ml-3">예</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div id="translation-options-section" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" style="display:none;">
                                 <div>
-                                    <label for="output_format" class="block text-sm font-medium text-gray-700 mb-1">{{ translations.output_format_label }}</label>
-                                    <select class="form-select" id="output_format" name="output_format" required>
-                                        <option value="epub">EPUB</option>
-                                        <option value="markdown">Markdown</option>
-                                        <option value="doc">Word (DOCX)</option>
-                                        <option value="pdf">PDF</option>
+                                    <label for="target_lang" class="block text-sm font-medium text-gray-700 mb-1">{{ translations.translation_language_label }}</label>
+                                    <select class="form-select" id="target_lang" name="target_lang">
+                                        <option value="ko">한국어</option>
+                                        <option value="en">English</option>
+                                        <option value="ja">日本語</option>
+                                        <option value="zh">中文</option>
                                     </select>
                                 </div>
+                                <div>
+                                    <label for="translator_type" class="block text-sm font-medium text-gray-700 mb-1">{{ translations.translation_option_label }}</label>
+                                    <select class="form-select" id="translator_type" name="translator_type">
+                                        <option value="google">구글 번역 (내장)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    {{ translations.output_format_label }}
+                                </label>
+                                <div class="grid grid-cols-4 gap-4">
+                                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                        <input type="radio" name="output_format" value="epub" class="h-4 w-4 text-blue-600" required>
+                                        <span class="ml-3">EPUB</span>
+                                    </label>
+                                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                        <input type="radio" name="output_format" value="pdf" class="h-4 w-4 text-blue-600" required>
+                                        <span class="ml-3">PDF</span>
+                                    </label>
+                                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                        <input type="radio" name="output_format" value="markdown" class="h-4 w-4 text-blue-600" required>
+                                        <span class="ml-3">Markdown</span>
+                                    </label>
+                                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                        <input type="radio" name="output_format" value="doc" class="h-4 w-4 text-blue-600" required>
+                                        <span class="ml-3">DOCX</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" id="merge-pages-section">
                                 <div>
                                     <label for="merge_pages" class="block text-sm font-medium text-gray-700 mb-1">{{ translations.merge_pages_label }}</label>
                                     <select class="form-select" id="merge_pages" name="merge_pages">
@@ -207,36 +258,6 @@
                                     </select>
                                     <p class="mt-1 text-xs text-gray-500">{{ translations.merge_pages_help }}</p>
                                 </div>
-                            </div>
-                            {% if not disable_translation %}
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                <div>
-                                    <label for="translator_type" class="block text-sm font-medium text-gray-700 mb-1">{{ translations.translation_option_label }}</label>
-                                    <select class="form-select" id="translator_type" name="translator_type" {% if not disable_translation %}required{% endif %}>
-                                        <!-- JS로 동적 로드 -->
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="target_lang" class="block text-sm font-medium text-gray-700 mb-1">{{ translations.translation_language_label }}</label>
-                                    <select class="form-select" id="target_lang" name="target_lang" disabled>
-                                        <option value="ko">한국어</option>
-                                        <option value="en">English</option>
-                                        <option value="ja">日本語</option>
-                                        <option value="zh">中文</option>
-                                    </select>
-                                </div>
-                            </div>
-                            {% endif %}
-                            <div class="mb-4">
-                                <label for="font_family" class="block text-sm font-medium text-gray-700 mb-1">{{ translations.font_family_label }}</label>
-                                <select class="form-select" id="font_family" name="font_family">
-                                    <option value="Noto Sans KR" selected>Noto Sans KR</option>
-                                    <option value="Nanum Gothic">나눔고딕</option>
-                                    <option value="Malgun Gothic">맑은고딕</option>
-                                    <option value="Apple SD Gothic Neo">Apple SD Gothic Neo</option>
-                                    <option value="Arial">Arial</option>
-                                    <option value="Times New Roman">Times New Roman</option>
-                                </select>
                             </div>
                         </div>
 
@@ -332,6 +353,9 @@
         const selectorsSection = document.getElementById('selectors-section');
         const contentSelectorInput = document.getElementById('content_selector');
         const menuSelectorInput = document.getElementById('menu_selector');
+
+        const SCRIPT_TRANSLATION_ENABLED = document.body.dataset.translationEnabled === 'true';
+        console.log('Initial Translation Status:', SCRIPT_TRANSLATION_ENABLED);  // 초기 상태 로그
 
         function updateStepIndicator() {
             document.querySelectorAll('.step-item').forEach((item, index) => {
@@ -449,9 +473,12 @@
             
             // Step 3: 변환 옵션 검증
             if (stepNumber === 3) {
-                const outputFormat = currentStepDiv.querySelector('select[name="output_format"]');
-                if (!outputFormat.value) {
-                    outputFormat.classList.add('border-red-500');
+                const outputFormat = currentStepDiv.querySelector('input[name="output_format"]:checked');
+                if (!outputFormat) {
+                    const outputFormatSection = currentStepDiv.querySelector('#output-format-section');
+                    if (outputFormatSection) {
+                        outputFormatSection.classList.add('border-red-500');
+                    }
                     isValid = false;
                 }
 
@@ -503,7 +530,7 @@
 
             // 출력 형식
             const outputFormat = formData.get('output_format');
-            addSummaryItem(TRANSLATIONS_JS.output_format_label, outputFormat.toUpperCase());
+            addSummaryItem(TRANSLATIONS_JS.output_format_label, outputFormat ? outputFormat.toUpperCase() : '-');
 
             // 페이지 병합
             const mergePages = formData.get('merge_pages') === 'true';
@@ -512,12 +539,15 @@
 
             // 번역 옵션
             if (!SCRIPT_DISABLE_TRANSLATION) {
-                const translatorType = formData.get('translator_type');
-                const targetLang = formData.get('target_lang');
-                addSummaryItem(TRANSLATIONS_JS.translation_option_label, 
-                    translatorType === 'none' ? '번역 안함' : translatorType);
-                if (translatorType !== 'none' && targetLang) {
-                    addSummaryItem(TRANSLATIONS_JS.translation_language_label, targetLang);
+                let translatorType = formData.get('translator_type');
+                let targetLang = formData.get('target_lang');
+                if (!translatorType || translatorType === 'none') {
+                    addSummaryItem(TRANSLATIONS_JS.translation_option_label, '번역 안함');
+                } else {
+                    addSummaryItem(TRANSLATIONS_JS.translation_option_label, translatorType);
+                    if (targetLang) {
+                        addSummaryItem(TRANSLATIONS_JS.translation_language_label, targetLang);
+                    }
                 }
             }
 
@@ -622,11 +652,16 @@
                     
                     showDownloadState();
                 } else {
-                    const errorData = await response.json();
-                    showErrorState(errorData.error || '변환 중 오류가 발생했습니다.');
+                    let errorMsg = '변환 중 오류가 발생했습니다.';
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch {
+                        // JSON 파싱 실패 시 기본 메시지 사용
+                    }
+                    showErrorState(errorMsg);
                 }
             } catch (error) {
-                console.error('Error:', error);
                 showErrorState(error.message || '네트워크 오류가 발생했습니다.');
             } finally {
                 eventSource.close();
@@ -647,66 +682,55 @@
         });
 
         function loadTranslators() {
+            console.log('loadTranslators function called');  // 함수 호출 확인
+            
+            const translationOptions = document.getElementById('translation-options');
             const translatorSelect = document.getElementById('translator_type');
             const targetLangSelect = document.getElementById('target_lang');
             
-            // 번역이 비활성화된 경우 함수 종료
-            if (SCRIPT_DISABLE_TRANSLATION) {
-                if (translatorSelect) {
-                    translatorSelect.closest('.grid').style.display = 'none';
+            console.log('Translation Elements:', {  // 요소 존재 여부 확인
+                translationOptions: !!translationOptions,
+                translatorSelect: !!translatorSelect,
+                targetLangSelect: !!targetLangSelect
+            });
+            
+            // 번역이 활성화된 경우에만 번역 옵션 표시
+            if (SCRIPT_TRANSLATION_ENABLED) {
+                console.log('Translation is enabled');  // 활성화 상태 확인
+                if (translationOptions) {
+                    translationOptions.style.display = 'grid';
+                    console.log('Translation options displayed');
                 }
-                return;
-            }
-            
-            // 번역 관련 요소가 없는 경우 함수 종료
-            if (!translatorSelect || !targetLangSelect) {
-                return;
-            }
-            
-            // 초기 상태 설정
-            translatorSelect.closest('.grid').style.display = 'grid';
-            translatorSelect.innerHTML = '<option value="none">번역 안함</option>';
-            targetLangSelect.disabled = true;
-            
-            fetch('/api/available_translators')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('번역기 정보를 불러오는데 실패했습니다.');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.disabled) {
-                        translatorSelect.closest('.grid').style.display = 'none';
-                        translatorSelect.removeAttribute('required');
-                        return;
-                    }
-                    
-                    // 번역기 목록 추가
-                    data.translators.forEach(translator => {
-                        const option = document.createElement('option');
-                        option.value = translator;
-                        option.textContent = translator;
-                        translatorSelect.appendChild(option);
-                    });
-                    
-                    // 번역기 선택 이벤트 핸들러
+                
+                // 번역기 목록 추가
+                if (translatorSelect) {
+                    translatorSelect.innerHTML = '<option value="none">번역 안함</option>';
+                    translatorSelect.innerHTML += '<option value="google">구글 번역 (내장)</option>';
+                    console.log('Translation options added to select');
+                }
+                
+                // 번역기 선택 이벤트 핸들러
+                if (translatorSelect && targetLangSelect) {
                     translatorSelect.onchange = function() {
+                        console.log('Translator type changed to:', this.value);  // 선택 변경 확인
                         if (this.value === 'none') {
                             targetLangSelect.disabled = true;
                             targetLangSelect.removeAttribute('required');
+                            console.log('Target language select disabled');
                         } else {
                             targetLangSelect.disabled = false;
                             targetLangSelect.setAttribute('required', '');
+                            console.log('Target language select enabled');
                         }
                     };
-                })
-                .catch(error => {
-                    console.error('Error loading translators:', error);
-                    // 오류 발생 시 번역 섹션 숨김
-                    translatorSelect.closest('.grid').style.display = 'none';
-                    translatorSelect.removeAttribute('required');
-                });
+                }
+            } else {
+                console.log('Translation is disabled');  // 비활성화 상태 확인
+                if (translationOptions) {
+                    translationOptions.style.display = 'none';
+                    console.log('Translation options hidden');
+                }
+            }
         }
 
         function showError(message) {
@@ -766,6 +790,7 @@
 
         // 초기화
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM Content Loaded');  // 페이지 로드 확인
             showStep(currentStep);
             loadTranslators();
             updateProgressText(0, 0, 0);
@@ -804,7 +829,178 @@
                 contentSelectorInput.required = false;
                 menuSelectorInput.required = false;
             }
+
+            const mergePagesSection = document.getElementById('merge-pages-section');
+            function updateMergePagesVisibility() {
+                const conversionScope = document.querySelector('input[name="conversion_scope"]:checked').value;
+                if (conversionScope === 'multiple') {
+                    mergePagesSection.style.display = '';
+                } else {
+                    mergePagesSection.style.display = 'none';
+                }
+            }
+            conversionScopeRadios.forEach(radio => {
+                radio.addEventListener('change', updateMergePagesVisibility);
+            });
+            updateMergePagesVisibility();
+
+            // 번역 여부에 따라 옵션/출력형식 제어
+            const doTranslateYes = document.getElementById('do_translate_yes');
+            const doTranslateNo = document.getElementById('do_translate_no');
+            const translationOptionsSection = document.getElementById('translation-options-section');
+            const outputFormatRadios = document.querySelectorAll('input[name="output_format"]');
+            const translatorTypeSelect = document.getElementById('translator_type');
+            const targetLangSelect = document.getElementById('target_lang');
+
+            function updateTranslationUI() {
+                if (doTranslateYes.checked) {
+                    translationOptionsSection.style.display = '';
+                    if (translatorTypeSelect) {
+                        translatorTypeSelect.value = 'google';
+                        translatorTypeSelect.removeAttribute('disabled');
+                        translatorTypeSelect.setAttribute('readonly', 'readonly');
+                    }
+                    if (outputFormatRadios) {
+                        outputFormatRadios.forEach(radio => {
+                            if (radio.value === 'markdown') {
+                                radio.checked = true;
+                            }
+                            radio.setAttribute('readonly', 'readonly');
+                        });
+                    }
+                    if (targetLangSelect) {
+                        targetLangSelect.disabled = false;
+                    }
+                } else {
+                    translationOptionsSection.style.display = 'none';
+                    if (translatorTypeSelect) {
+                        translatorTypeSelect.value = 'none';
+                        translatorTypeSelect.removeAttribute('readonly');
+                        translatorTypeSelect.removeAttribute('disabled');
+                    }
+                    if (outputFormatRadios) {
+                        outputFormatRadios.forEach(radio => {
+                            radio.removeAttribute('readonly');
+                        });
+                    }
+                    if (targetLangSelect) {
+                        targetLangSelect.disabled = true;
+                    }
+                }
+            }
+            if (doTranslateYes && doTranslateNo) {
+                doTranslateYes.addEventListener('change', updateTranslationUI);
+                doTranslateNo.addEventListener('change', updateTranslationUI);
+                updateTranslationUI();
+            }
+
+            // 글꼴 선택 컨테이너 표시/숨김 처리
+            function updateFontFamilyVisibility() {
+                const outputFormat = document.querySelector('input[name="output_format"]:checked')?.value;
+                const fontFamilyContainer = document.getElementById('fontFamilyContainer');
+                
+                if (outputFormat === 'pdf' || outputFormat === 'doc') {
+                    fontFamilyContainer.classList.remove('hidden');
+                } else {
+                    fontFamilyContainer.classList.add('hidden');
+                }
+            }
+
+            // 출력 형식 변경 시 글꼴 선택 표시/숨김 업데이트
+            document.querySelectorAll('input[name="output_format"]').forEach(radio => {
+                radio.addEventListener('change', updateFontFamilyVisibility);
+            });
+
+            // 변환 시작 버튼 클릭 시
+            document.getElementById('startConversion').addEventListener('click', function() {
+                // 이전 버튼과 변환 시작 버튼 숨기기
+                document.getElementById('prevStep3').classList.add('hidden');
+                document.getElementById('startConversion').classList.add('hidden');
+                // 변환 중지 버튼 표시
+                document.getElementById('stopConversion').classList.remove('hidden');
+                
+                // 변환 시작
+                startConversion();
+            });
+
+            // 변환 중지 버튼 클릭 시
+            document.getElementById('stopConversion').addEventListener('click', function() {
+                if (confirm('{{ translations.stop_conversion_confirm }}')) {
+                    // 변환 중지 요청
+                    fetch('/stop_conversion', { method: 'POST' })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                // 변환 중지 버튼 숨기고 변환 시작 버튼 표시
+                                document.getElementById('stopConversion').classList.add('hidden');
+                                document.getElementById('startConversion').classList.remove('hidden');
+                                document.getElementById('prevStep3').classList.remove('hidden');
+                            }
+                        });
+                }
+            });
+
+            // 처음으로 버튼 클릭 시
+            document.getElementById('goToStart').addEventListener('click', function() {
+                // Step 1로 이동
+                showStep(1);
+                // 모든 입력 필드 초기화
+                document.getElementById('conversionForm').reset();
+                // 글꼴 선택 컨테이너 초기화
+                updateFontFamilyVisibility();
+            });
+
+            // 변환 완료 시 호출되는 함수
+            function onConversionComplete() {
+                // 변환 중지 버튼 숨기고 처음으로 버튼 표시
+                document.getElementById('stopConversion').classList.add('hidden');
+                document.getElementById('goToStart').classList.remove('hidden');
+            }
         });
+
+        function startConversion() {
+            const formData = new FormData(document.getElementById('conversionForm'));
+            
+            // 진행 상태 표시
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('loadingText').textContent = '{{ translations.loading_text }}';
+            
+            fetch('/convert', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                // 다운로드 링크 생성
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = formData.get('title') || 'converted_file';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                // 변환 완료 처리
+                onConversionComplete();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('{{ translations.error_prefix }} ' + error.message);
+                // 오류 발생 시 버튼 상태 복구
+                document.getElementById('stopConversion').classList.add('hidden');
+                document.getElementById('startConversion').classList.remove('hidden');
+                document.getElementById('prevStep3').classList.remove('hidden');
+            })
+            .finally(() => {
+                document.getElementById('loadingOverlay').classList.add('hidden');
+            });
+        }
     </script>
 </body>
 </html>

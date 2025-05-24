@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, render_template, Response, jsonify
+from flask import Flask, request, send_file, render_template, Response, jsonify, after_this_request
 from web_to_ebook import WebToEbook
 import os
 import tempfile
@@ -15,6 +15,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
+from googletrans import Translator
 
 app = Flask(__name__)
 
@@ -81,7 +82,12 @@ translations = {
         'footer_rate_limit_info': "변환 제한: 분당 {rate_limit_convert_per_minute}회, 시간당 {rate_limit_per_hour}회, 일일 {rate_limit_per_day}회.",
         'validate_required': "이 필드는 필수입니다.",
         'validate_url': "유효한 URL을 입력해주세요 (예: http:// 또는 https://).",
-        'error_network_unknown': "네트워크 또는 알 수 없는 오류: {message}"
+        'error_network_unknown': "네트워크 또는 알 수 없는 오류: {message}",
+        'main_title': "웹페이지를 전자책으로 변환",
+        'main_subtitle': "웹페이지를 EPUB, PDF, Markdown 형식으로 변환하세요",
+        'stop_conversion_button': '변환 중지',
+        'stop_conversion_confirm': '변환을 중지하시겠습니까?',
+        'go_to_start_button': '처음으로'
     },
     'en': {
         'title': "Web Page Converter Wizard - EPUB, PDF, Markdown",
@@ -141,7 +147,12 @@ translations = {
         'footer_rate_limit_info': "Conversion limits: {rate_limit_convert_per_minute}/min, {rate_limit_per_hour}/hr, {rate_limit_per_day}/day.",
         'validate_required': "This field is required.",
         'validate_url': "Please enter a valid URL (e.g., http:// or https://).",
-        'error_network_unknown': "Network or unknown error: {message}"
+        'error_network_unknown': "Network or unknown error: {message}",
+        'main_title': "Convert Web Pages to E-books",
+        'main_subtitle': "Convert web pages to EPUB, PDF, and Markdown formats",
+        'stop_conversion_button': 'Stop Conversion',
+        'stop_conversion_confirm': 'Are you sure you want to stop the conversion?',
+        'go_to_start_button': 'Go to Start'
     }
 }
 
@@ -154,19 +165,19 @@ def get_locale():
     return 'ko' # Default language
 
 # 업로드된 파일을 저장할 디렉토리
-UPLOAD_FOLDER = '/tmp/uploads'
+UPLOAD_FOLDER = os.path.join(tempfile.gettempdir(), 'uploads')
 if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # 번역 API 키 환경변수
-DISABLE_TRANSLATION = os.environ.get('DISABLE_TRANSLATION', 'false').lower() == 'true'
+TRANSLATION_ENABLED = os.getenv("TRANSLATION_ENABLED", "false").lower() == "true"
 
 PAPAGO_CLIENT_ID = None
 PAPAGO_CLIENT_SECRET = None
 OPENAI_API_KEY = None
 DEEPL_API_KEY = None
 
-if not DISABLE_TRANSLATION:
+if TRANSLATION_ENABLED:
     PAPAGO_CLIENT_ID = os.environ.get('PAPAGO_CLIENT_ID')
     PAPAGO_CLIENT_SECRET = os.environ.get('PAPAGO_CLIENT_SECRET')
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
@@ -214,30 +225,28 @@ def update_progress(current, total, error=None):
 def index():
     lang_code = get_locale()
     app.logger.debug(f"Selected lang_code: {lang_code}")
-    # Ensure trans is always a dictionary, even if lang_code is somehow invalid (should not happen with current get_locale)
     trans = translations.get(lang_code, translations.get('en', {})) 
     app.logger.debug(f"Translations for lang_code '{lang_code}': {type(trans)} - Keys (first few): {list(trans.keys())[:5] if trans else 'None'}")
     
     if not trans:
         app.logger.error(f"Critical: Translations not found for lang_code '{lang_code}'. Fallback did not work.")
-        # Fallback to English or an empty dict to prevent UndefinedError, though the page will be broken.
-        trans = translations.get('en', {}) # Or provide a minimal default structure
+        trans = translations.get('en', {})
 
     return render_template(
         'index.html', 
-        disable_translation=DISABLE_TRANSLATION,
         ad_client_id=AD_CLIENT_ID,
         rate_limit_per_day=RATE_LIMIT_PER_DAY,
         rate_limit_per_hour=RATE_LIMIT_PER_HOUR,
         rate_limit_convert_per_minute=RATE_LIMIT_CONVERT_PER_MINUTE,
-        translations=trans, # Pass translations to the template
-        current_lang=lang_code # Pass current language to template
+        translations=trans,
+        current_lang=lang_code,
+        translation_enabled=TRANSLATION_ENABLED,
     )
 
 @app.route('/api/available_translators')
 def available_translators():
     translators = []
-    if not DISABLE_TRANSLATION:
+    if TRANSLATION_ENABLED:
         translators.append({'value': 'none', 'label': '번역하지 않음'})
         # 브라우저 내장 번역 옵션 추가
         translators.append({'value': 'browser', 'label': '브라우저 내장 번역 사용'})
@@ -293,33 +302,45 @@ def create_driver():
         app.logger.error(f"Driver creation error: {str(e)}")
         raise
 
+# 전역 변수로 현재 실행 중인 변환 작업 추적
+current_conversion = None
+
+@app.route('/stop_conversion', methods=['POST'])
+def stop_conversion():
+    global current_conversion
+    if current_conversion:
+        try:
+            # Selenium 드라이버 종료
+            if hasattr(current_conversion, 'driver'):
+                current_conversion.driver.quit()
+            current_conversion = None
+            return jsonify({'success': True})
+        except Exception as e:
+            app.logger.error(f"Error stopping conversion: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)})
+    return jsonify({'success': True})
+
 @app.route('/convert', methods=['POST'])
 @limiter.limit(f"{RATE_LIMIT_CONVERT_PER_MINUTE} per minute")
 def convert():
+    global current_conversion
     output_path = None
     try:
         url = request.form['url']
         conversion_scope = request.form.get('conversion_scope', 'single')
-        
         content_selector = request.form.get('content_selector', '')
         menu_selector = request.form.get('menu_selector', '')
-
         if conversion_scope == 'single':
             content_selector = "__AUTO_SINGLE_PAGE__"
             menu_selector = None
-
         output_format = request.form['output_format']
         target_lang = request.form.get('target_lang', '')
         merge_pages = request.form.get('merge_pages', 'true').lower() == 'true'
         translator_type = request.form.get('translator_type', 'none')
         font_family = request.form.get('font_family', 'Noto Sans KR')
-
-        # 입력값 검증
         if not url or not url.startswith(('http://', 'https://')):
             raise ValueError("유효한 URL을 입력해주세요.")
-
         driver = create_driver()
-
         converter = WebToEbook(
             title="",
             base_url=url,
@@ -333,81 +354,120 @@ def convert():
             deepl_key=DEEPL_API_KEY,
             font_family=font_family
         )
-
-        output_dir = '/tmp/uploads'
+        current_conversion = converter
+        output_dir = UPLOAD_FOLDER
         os.makedirs(output_dir, exist_ok=True)
-        
         actual_output_format_extension = "md" if output_format.lower() == "markdown" else output_format
         temp_filename = f"ebook_conversion_{int(time.time())}.{actual_output_format_extension}"
         output_path = os.path.join(output_dir, temp_filename)
-
-        def conversion_process_wrapper():
-            nonlocal output_path
-            try:
-                converter.process(output_path=output_path, output_format=output_format)
-                time.sleep(0.5)  # 파일 시스템 동기화 대기
-
-                if not os.path.exists(output_path):
-                    raise FileNotFoundError("변환된 파일이 생성되지 않았습니다.")
-
-                # 파일명 생성
-                base_filename_url = url.replace("https://", "").replace("http://", "")
-                safe_base_filename = re.sub(r"[^a-zA-Z0-9-_]", "_", base_filename_url)
-                safe_base_filename = re.sub(r"_+", "_", safe_base_filename).strip('_')
-
-                doc_title = converter.title if converter.title else ""
-                if doc_title:
-                    safe_title = re.sub(r"[^a-zA-Z0-9-_ ]", "", doc_title).strip().replace(" ", "_")
-                    final_base_name = safe_title if safe_title else safe_base_filename
+        app.logger.info(f"[convert] 변환 파일 경로: {output_path}")
+        # 번역이 활성화된 경우: HTML->Markdown 변환 후, Markdown 텍스트 번역
+        if output_format.lower() == 'markdown' and translator_type != 'none' and target_lang:
+            # 1. 원본 마크다운 생성
+            converter.process(output_path, output_format='markdown')
+            app.logger.info(f"[convert] 변환 후 파일 존재 여부: {os.path.exists(output_path)}")
+            if not os.path.exists(output_path):
+                app.logger.error(f"[convert] 변환 후 파일이 생성되지 않았습니다: {output_path}")
+                raise FileNotFoundError(f"변환 실패: 파일이 생성되지 않았습니다. 내부 오류 또는 권한 문제일 수 있습니다.")
+            # 2. 번역본 생성
+            with open(output_path, 'r', encoding='utf-8') as f:
+                md_lines = f.readlines()
+            blocks = []
+            block_indices = []
+            current_block = []
+            for idx, line in enumerate(md_lines):
+                if line.strip() == '':
+                    if current_block:
+                        blocks.append(' '.join(current_block).strip())
+                        block_indices.append(idx)
+                        current_block = []
                 else:
-                    final_base_name = safe_base_filename
-
-                download_extension = "md" if output_format.lower() == "markdown" else output_format
-                if target_lang and translator_type != 'none':
-                    final_download_name = f"{final_base_name}_{target_lang}.{download_extension}"
+                    current_block.append(line.strip())
+            if current_block:
+                blocks.append(' '.join(current_block).strip())
+                block_indices.append(len(md_lines))
+            max_len = 5000
+            translated_blocks = []
+            i = 0
+            translator = Translator()
+            while i < len(blocks):
+                batch = []
+                batch_len = 0
+                while i < len(blocks) and batch_len + len(blocks[i]) + 4 <= max_len:
+                    batch.append(blocks[i])
+                    batch_len += len(blocks[i]) + 4
+                    i += 1
+                try:
+                    joined = '|||'.join(batch)
+                    translated = translator.translate(joined, dest=target_lang).text
+                    split_translated = translated.split('|||') if isinstance(translated, str) else batch
+                    if len(split_translated) != len(batch):
+                        split_translated = batch
+                    translated_blocks.extend(split_translated)
+                except Exception as e:
+                    app.logger.error(f'블록 번역 오류: {str(e)}. 원본 유지.')
+                    translated_blocks.extend(batch)
+            new_md_lines = []
+            block_idx = 0
+            for idx, line in enumerate(md_lines):
+                if line.strip() == '':
+                    new_md_lines.append('\n')
                 else:
-                    final_download_name = f"{final_base_name}.{download_extension}"
-
-                return final_download_name
-
-            except Exception as e:
-                app.logger.error(f"Conversion error: {str(e)}")
-                update_progress(0, 0, str(e))
-                raise
-
-        thread = Thread(target=conversion_process_wrapper)
-        thread.start()
-        thread.join()
-
-        if output_path and os.path.exists(output_path):
-            try:
-                final_download_name = conversion_process_wrapper()
-                response = send_file(
-                    output_path,
-                    as_attachment=True,
-                    download_name=final_download_name
-                )
-                return response
-            except Exception as e:
-                app.logger.error(f"File sending error: {str(e)}")
-                raise
+                    if block_idx < len(translated_blocks):
+                        new_md_lines.append(translated_blocks[block_idx] + '\n')
+                        while idx+1 < len(md_lines) and md_lines[idx+1].strip() != '':
+                            idx += 1
+                        block_idx += 1
+            translated_filename = f"ebook_conversion_{int(time.time())}_translated.md"
+            translated_path = os.path.join(output_dir, translated_filename)
+            with open(translated_path, 'w', encoding='utf-8') as f:
+                f.writelines(new_md_lines)
+            app.logger.info(f"[convert] 번역본 파일 경로: {translated_path}, 존재 여부: {os.path.exists(translated_path)}")
+            # 응답: 두 파일명 반환 (삭제는 download에서만)
+            return jsonify({
+                'original': os.path.basename(output_path),
+                'translated': os.path.basename(translated_path)
+            })
         else:
-            raise FileNotFoundError("변환된 파일을 찾을 수 없습니다.")
-
+            # 기존 방식
+            converter.process(output_path, output_format=output_format)
+            app.logger.info(f"[convert] 변환 후 파일 존재 여부: {os.path.exists(output_path)}")
+            if not os.path.exists(output_path):
+                app.logger.error(f"[convert] 변환 후 파일이 생성되지 않았습니다: {output_path}")
+                raise FileNotFoundError(f"변환 실패: 파일이 생성되지 않았습니다. 내부 오류 또는 권한 문제일 수 있습니다.")
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name=os.path.basename(output_path)
+            )
     except Exception as e:
         app.logger.error(f"Conversion endpoint error: {str(e)}")
-        error_message = "변환 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
-        return jsonify({'error': error_message}), 500
+        error_message = str(e) or "변환 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+        response = jsonify({'error': error_message})
+        response.status_code = 500
+        return response
     finally:
         if 'driver' in locals():
             driver.quit()
-        # 임시 파일 정리
-        if output_path and os.path.exists(output_path):
-            try:
-                os.remove(output_path)
-                app.logger.info(f"Temporary file removed: {output_path}")
-            except Exception as e:
-                app.logger.error(f"Failed to remove temporary file: {str(e)}")
+        current_conversion = None
+
+@app.route('/download')
+def download_file():
+    filename = request.args.get('file')
+    if not filename:
+        return "No file specified", 400
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    if not os.path.exists(file_path):
+        return "File not found", 404
+    @after_this_request
+    def cleanup(response):
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            app.logger.error(f"Temporary file removal error: {str(e)}")
+        return response
+    return send_file(file_path, as_attachment=True, download_name=filename)
 
 @app.route('/health')
 def health_check():

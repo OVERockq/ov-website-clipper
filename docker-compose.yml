@@ -21,10 +21,20 @@ services:
       - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-50}
       - RATE_LIMIT_CONVERT_PER_MINUTE=${RATE_LIMIT_CONVERT_PER_MINUTE:-10}
       - AD_CLIENT_ID=${AD_CLIENT_ID:-ca-pub-XXXXXXXXXXXXXXXX}  # Google AdSense Client ID
-      - PAPAGO_CLIENT_ID=${PAPAGO_CLIENT_ID:-}
-      - PAPAGO_CLIENT_SECRET=${PAPAGO_CLIENT_SECRET:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - DEEPL_API_KEY=${DEEPL_API_KEY:-}
+      # 번역 기능 사용 여부 (true/false)
+      - TRANSLATION_ENABLED=true
+      - TRANSLATION_ENGINE=
+      - GOOGLE_API_KEY=
+      - PAPAGO_ID=${PAPAGO_ID:-}
+      - PAPAGO_SECRET=${PAPAGO_SECRET:-}
+      - DEEPL_KEY=${DEEPL_KEY:-}
+      - OPENAI_KEY=${OPENAI_KEY:-}
+      # TRANSLATION_ENGINE 지원값:
+      # - none            : 파이썬 Deep Translator 라이브러리 (무료, Google 번역)
+      # - google          : Google Cloud Translation API (유료, API KEY 필요)
+      # - papago          : 네이버 Papago API (API KEY 필요)
+      # - deepl           : DeepL API (API KEY 필요)
+      # - openai          : OpenAI GPT 번역 (API KEY 필요)
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
